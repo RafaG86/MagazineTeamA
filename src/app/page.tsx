@@ -444,7 +444,7 @@ export default function Home() {
             )}
             {isAdmin && (
               <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={() => {
-                setEditStandings(standings.filter(s => s.division === 'A' || !s.division));
+                setEditStandings(standings.filter(s => s.division === 'A' || s.division === 'DIMAYOR' || !s.division));
                 setShowStandingsModal(true);
               }}>
                 <Edit3 size={14} style={{ marginRight: '4px' }} />
@@ -464,7 +464,7 @@ export default function Home() {
             </tr>
           </thead>
           <tbody>
-            {standings.filter(s => s.division === 'A' || !s.division).map((item) => (
+            {standings.filter(s => s.division === 'A' || s.division === 'DIMAYOR' || !s.division).map((item) => (
               <tr key={item.id || item.team}>
                 <td>
                   <span className={`pos-badge ${item.pos <= 8 ? 'pos-top' : ''}`}>
