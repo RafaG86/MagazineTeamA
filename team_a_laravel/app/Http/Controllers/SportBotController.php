@@ -39,7 +39,7 @@ class SportBotController extends Controller
      */
     private function captureAndExtract(string $url, string $type, string $tournament)
     {
-        set_time_limit(180);
+        set_time_limit(600);
         
         $nodePath = 'C:\\Program Files\\nodejs\\node.exe';
         $scriptPath = base_path('scripts/scrape.cjs');
@@ -50,16 +50,21 @@ class SportBotController extends Controller
         
         $process = new \Symfony\Component\Process\Process([$nodePath, $scriptPath, $url, 'screenshot', $tempFile]);
         $process->setTimeout(180);
-        $process->setEnv([
+        $process->setEnv(array_merge(getenv(), [
             'TMP' => sys_get_temp_dir(),
             'TEMP' => sys_get_temp_dir(),
             'HOME' => storage_path('app'),
             'USERPROFILE' => storage_path('app/puppeteer_home'),
             'LOCALAPPDATA' => storage_path('app/puppeteer_home'),
             'PUPPETEER_CACHE_DIR' => storage_path('app/puppeteer_cache'),
-            'PATH' => getenv('PATH') . ';C:\\Windows\\System32',
-        ]);
+        ]));
         $process->run();
+
+        if (str_contains($process->getOutput(), 'DOM_NOT_READY')) {
+            Log::warning("DOM no listo para $url. Reintentando en 5s...");
+            sleep(5);
+            $process->run();
+        }
 
         if (!$process->isSuccessful() || !file_exists($tempFile)) {
             Log::error("Scraper failed. Error: " . $process->getErrorOutput());
@@ -75,7 +80,11 @@ class SportBotController extends Controller
 
         // 2. Procesar con Gemini Vision (con Fallback a DeepSeek Text)
         $prompt = ($type === 'standings') 
-            ? "Lee esta imagen de una tabla de posiciones de $tournament y extrae los datos JSON: { \"standings\": [ { \"pos\": 1, \"team\": \"...\", \"pj\": 0, \"pts\": 0, \"gd\": 0, \"form\": \"...\" } ] }"
+            ? "Analiza esta tabla de posiciones de $tournament y extrae los datos JSON siguiendo estas reglas estrictas:\n" .
+              "1. Mapea las cabeceras: PJ (jugados), PG/G (ganados), PE/E (empatados), PP/P (perdidos), GF (goles favor), GC (goles contra), DG/GD (dif. goles), PTS (puntos).\n" .
+              "2. Validación Matemática: Asegúrate de que DG coincida exactamente con (GF - GC).\n" .
+              "3. Nombres de Equipos: Si el nombre no es texto claro, búscalo en el atributo 'alt' o 'title' de los escudos/imágenes.\n" .
+              "Formato: { \"standings\": [ { \"pos\": 1, \"team\": \"...\", \"pj\": 0, \"won\": 0, \"draw\": 0, \"lost\": 0, \"gf\": 0, \"ga\": 0, \"gd\": 0, \"pts\": 0, \"form\": \"WWDLW\" } ] }"
             : "Lee esta imagen de resultados de $tournament y extrae los datos JSON: { \"round\": \"...\", \"matches\": [ { \"home_team\": \"...\", \"away_team\": \"...\", \"home_score\": 0, \"away_score\": 0, \"status\": \"finished\" } ] }";
 
         try {
@@ -89,11 +98,24 @@ class SportBotController extends Controller
             if (str_contains($e->getMessage(), 'quota') || str_contains($e->getMessage(), 'Rate limit')) {
                 Log::warning("Gemini Quota Exceeded. Falling back to DeepSeek Text Scraping for $url");
                 
-                // Fallback: Capturar texto y usar DeepSeek
+                            // Fallback: Capturar texto y usar DeepSeek
                 $textProcess = new \Symfony\Component\Process\Process([$nodePath, $scriptPath, $url, 'text']);
-                $textProcess->setEnv(['PATH' => getenv('PATH') . ';C:\\Windows\\System32']); // Asegurar path
+                $textProcess->setTimeout(180);
+                $textProcess->setEnv(array_merge(getenv(), [
+                    'TMP' => sys_get_temp_dir(),
+                    'TEMP' => sys_get_temp_dir(),
+                    'HOME' => storage_path('app'),
+                    'USERPROFILE' => storage_path('app/puppeteer_home'),
+                    'LOCALAPPDATA' => storage_path('app/puppeteer_home'),
+                    'PUPPETEER_CACHE_DIR' => storage_path('app/puppeteer_cache'),
+                ]));
                 $textProcess->run();
                 $pageText = $textProcess->getOutput();
+                
+                if (empty(trim($pageText)) || $pageText === 'DOM_NOT_READY') {
+                    Log::warning("Texto vacío para $url, omitiendo.");
+                    return [];
+                }
 
                 $fallbackPrompt = "Extrae los datos de $tournament de este texto en formato JSON. " . 
                     (($type === 'standings') ? "Formato: { \"standings\": [...] }" : "Formato: { \"round\": \"...\", \"matches\": [...] }") . 
@@ -153,20 +175,27 @@ class SportBotController extends Controller
             $combinedText .= "FUENTE ({$ext->source_url}):\n" . $ext->raw_data . "\n\n";
         }
 
-        $prompt = "Compara los datos de las siguientes fuentes y genera la versión final y verídica para $tournament ($type). " .
-            "Busca las coincidencias y resuelve discrepancias usando tu conocimiento interno. " .
-            "Devuelve el JSON final siguiendo este formato exacto:\n" .
+        $prompt = "Compara y consolida los datos de $tournament ($type). Reglas:\n" .
+            "1. Valida que para cada equipo: DG = GF - GC.\n" .
+            "2. Resuelve discrepancias priorizando la fuente que tenga los datos matemáticamente consistentes.\n" .
+            "3. Devuelve JSON final:\n" .
             (($type === 'standings') 
-                ? "{ \"standings\": [ { \"pos\": 1, \"team\": \"...\", \"pj\": 0, \"pts\": 0, \"gd\": 0, \"form\": \"WWDLW\" } ] }"
+                ? "{ \"standings\": [ { \"pos\": 1, \"team\": \"...\", \"pj\": 0, \"won\": 0, \"draw\": 0, \"lost\": 0, \"gf\": 0, \"ga\": 0, \"gd\": 0, \"pts\": 0, \"form\": \"WWDLW\" } ] }"
                 : "{ \"round\": \"...\", \"matches\": [ { \"home_team\": \"...\", \"away_team\": \"...\", \"home_score\": 0, \"away_score\": 0, \"status\": \"finished\" } ] }") .
             "\n\nFuentes:\n" . $combinedText;
 
-        $finalJson = $this->askDeepSeek($prompt, 'deepseek-reasoner'); // Usar Reasoner (R1) para consolidación
+        $finalJson = $this->askDeepSeek($prompt, 'deepseek-reasoner');
 
         // Marcar como consolidadas
         DB::table('sport_bot_extractions')
             ->whereIn('id', $extractions->pluck('id'))
             ->update(['is_consolidated' => true]);
+
+        // askDeepSeek ya retorna un array
+        if (empty($finalJson)) {
+            Log::error("consolidateAndSave: DeepSeek no devolvió datos válidos.");
+            return [];
+        }
 
         return $finalJson;
     }
@@ -174,26 +203,34 @@ class SportBotController extends Controller
     public function getUclStandings()
     {
         try {
-            // 1. Capturar de AS.com
-            $this->captureAndExtract('https://resultados.as.com/resultados/futbol/champions/clasificacion/', 'standings', 'Champions League');
-            
-            // 2. Consolidar (por ahora con una sola fuente ya funciona el pipeline)
+            // Fuentes: solo las que funcionan en esta red
+            try { $this->captureAndExtract('https://www.google.com/search?q=tabla+champions+league+hoy&hl=es', 'standings', 'Champions League'); } catch (\Exception $e) { Log::warning('Google UCL falló: ' . $e->getMessage()); }
+            try { $this->captureAndExtract('https://www.espn.com.co/futbol/posiciones/_/liga/uefa.champions', 'standings', 'Champions League'); } catch (\Exception $e) { Log::warning('ESPN UCL falló: ' . $e->getMessage()); }
+
             $json = $this->consolidateAndSave('standings', 'Champions League');
             $standings = $json['standings'] ?? [];
 
-            if (!empty($standings)) {
-                \App\Models\Standing::where('division', 'like', 'UCL_%')->delete();
-                foreach ($standings as $s) {
-                    \App\Models\Standing::create([
-                        'pos' => $s['pos'] ?? $s['position'] ?? 0, 
-                        'team' => $s['team'], 
-                        'pj' => $s['pj'] ?? $s['played'] ?? 0, 
-                        'pts' => $s['pts'] ?? $s['points'] ?? 0,
-                        'gd' => $s['gd'] ?? $s['diff'] ?? 0, 
-                        'form' => $s['form'] ?? $s['streak'] ?? '-----', 
-                        'division' => 'UCL_LEAGUE'
-                    ]);
-                }
+            if (empty($standings)) {
+                Log::warning('UCL Standings: no se pudieron consolidar datos de ninguna fuente.');
+                return response()->json(['error' => 'No se extrajeron datos de ninguna fuente disponible.'], 422);
+            }
+            
+            \App\Models\Standing::where('division', 'like', 'UCL_%')->delete();
+            foreach ($standings as $s) {
+                \App\Models\Standing::create([
+                    'pos' => $s['pos'] ?? $s['position'] ?? 0, 
+                    'team' => $s['team'], 
+                    'pj' => $s['pj'] ?? $s['played'] ?? 0, 
+                    'won' => $s['won'] ?? 0,
+                    'draw' => $s['draw'] ?? 0,
+                    'lost' => $s['lost'] ?? 0,
+                    'gf' => $s['gf'] ?? 0,
+                    'ga' => $s['ga'] ?? 0,
+                    'pts' => $s['pts'] ?? $s['points'] ?? 0,
+                    'gd' => $s['gd'] ?? $s['diff'] ?? 0, 
+                    'form' => $s['form'] ?? $s['streak'] ?? '-----', 
+                    'division' => 'UCL_LEAGUE'
+                ]);
             }
 
             return response()->json(['success' => true, 'standings' => $standings]);
@@ -234,6 +271,95 @@ class SportBotController extends Controller
             }
 
             return response()->json(['success' => true, 'matches' => $matches]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function getDimayorStandings()
+    {
+        try {
+            // 1. Capturar de múltiples fuentes para Liga BetPlay
+            try { $this->captureAndExtract('https://www.google.com/search?q=tabla+liga+betplay+dimayor&hl=es', 'standings', 'Liga BetPlay'); } catch (\Exception $e) { Log::warning("Google Dimayor falló: " . $e->getMessage()); }
+            try { $this->captureAndExtract('https://resultados.as.com/resultados/futbol/colombia/clasificacion/', 'standings', 'Liga BetPlay'); } catch (\Exception $e) { Log::warning("AS Dimayor falló: " . $e->getMessage()); }
+            try { $this->captureAndExtract('https://www.espn.com.co/futbol/posiciones/_/liga/col.1', 'standings', 'Liga BetPlay'); } catch (\Exception $e) { Log::warning("ESPN Dimayor falló: " . $e->getMessage()); }
+
+            // 2. Consolidar (Usando DeepSeek Reasoner para resolver Nacional vs Junior)
+            $json = $this->consolidateAndSave('standings', 'Liga BetPlay');
+            $standings = $json['standings'] ?? [];
+
+            if (!empty($standings)) {
+                \App\Models\Standing::where('division', 'DIMAYOR')->delete();
+                foreach ($standings as $s) {
+                    \App\Models\Standing::create([
+                        'pos' => $s['pos'] ?? $s['position'] ?? 0, 
+                        'team' => $s['team'], 
+                        'pj' => $s['pj'] ?? $s['played'] ?? 0, 
+                        'won' => $s['won'] ?? $s['g'] ?? 0,
+                        'draw' => $s['draw'] ?? $s['e'] ?? 0,
+                        'lost' => $s['lost'] ?? $s['p'] ?? 0,
+                        'gf' => $s['gf'] ?? 0,
+                        'ga' => $s['ga'] ?? 0,
+                        'pts' => $s['pts'] ?? $s['points'] ?? 0,
+                        'gd' => $s['gd'] ?? $s['diff'] ?? 0, 
+                        'form' => $s['form'] ?? $s['streak'] ?? '-----', 
+                        'division' => 'DIMAYOR'
+                    ]);
+                }
+            }
+
+            return response()->json(['success' => true, 'standings' => $standings]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function getDimayorResults()
+    {
+        try {
+            // 1. Capturar resultados de Liga BetPlay
+            try { $this->captureAndExtract('https://www.google.com/search?q=resultados+liga+betplay+dimayor+hoy&hl=es', 'results', 'Liga BetPlay'); } catch (\Exception $e) { Log::warning("Google Dimayor falló: " . $e->getMessage()); }
+            try { $this->captureAndExtract('https://resultados.as.com/resultados/futbol/colombia/jornada/', 'results', 'Liga BetPlay'); } catch (\Exception $e) { Log::warning("AS Dimayor falló: " . $e->getMessage()); }
+            try { $this->captureAndExtract('https://www.espn.com.co/futbol/resultados/_/liga/col.1', 'results', 'Liga BetPlay'); } catch (\Exception $e) { Log::warning("ESPN Dimayor falló: " . $e->getMessage()); }
+
+            // 2. Consolidar con el formato ESTRICTO solicitado
+            $combinedText = "";
+            $extractions = \App\Models\SportBotExtraction::where('tournament', 'Liga BetPlay')
+                ->where('type', 'results')
+                ->where('is_consolidated', false)
+                ->get();
+
+            foreach ($extractions as $ext) {
+                $combinedText .= "Fuente: " . $ext->source_url . "\nDatos: " . $ext->raw_data . "\n---\n";
+            }
+
+            $prompt = "Extrae los resultados actuales de la Liga BetPlay y entrégalos ESTRICTAMENTE en este formato JSON:\n" .
+                "{ \"matches\": [ { \"partido\": \"Nombre del Encuentro\", \"local\": \"Equipo A\", \"visitante\": \"Equipo B\", \"goles_local\": 0, \"goles_visitante\": 0, \"estado\": \"finalizado/en curso\", \"minuto\": null } ] }\n" .
+                "Si un dato no está disponible (como el minuto en un partido finalizado), usa null. No inventes.\n\nFuentes:\n" . $combinedText;
+
+            $jsonString = $this->askDeepSeek($prompt, 'deepseek-reasoner');
+            $json = json_decode($jsonString, true);
+            $matches = $json['matches'] ?? [];
+
+            // Marcar como consolidados
+            \App\Models\SportBotExtraction::whereIn('id', $extractions->pluck('id'))->update(['is_consolidated' => true]);
+
+            // Guardar en DB (opcional, pero lo hacemos para persistencia)
+            if (!empty($matches)) {
+                \App\Models\SportMatch::where('tournament', 'Liga BetPlay')->delete();
+                foreach ($matches as $m) {
+                    \App\Models\SportMatch::create([
+                        'tournament' => 'Liga BetPlay',
+                        'home_team' => $m['local'], 'away_team' => $m['visitante'],
+                        'home_score' => $m['goles_local'] ?? 0, 'away_score' => $m['goles_visitante'] ?? 0,
+                        'status' => $m['estado'], 'round' => 'Liga BetPlay',
+                        'match_time' => $m['minuto'] ? $m['minuto'] . "'" : null,
+                        'match_date' => now()->format('Y-m-d')
+                    ]);
+                }
+            }
+
+            return response()->json($matches); // Retornamos directamente el array para cumplir el formato
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }

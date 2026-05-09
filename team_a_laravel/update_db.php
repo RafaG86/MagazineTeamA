@@ -26,6 +26,11 @@ if (!Schema::hasTable('sport_bot_extractions')) {
 Schema::table('standings', function (Blueprint $table) {
     if (!Schema::hasColumn('standings', 'division')) $table->string('division')->nullable();
     if (!Schema::hasColumn('standings', 'form')) $table->string('form')->nullable();
+    if (!Schema::hasColumn('standings', 'won')) $table->integer('won')->default(0);
+    if (!Schema::hasColumn('standings', 'draw')) $table->integer('draw')->default(0);
+    if (!Schema::hasColumn('standings', 'lost')) $table->integer('lost')->default(0);
+    if (!Schema::hasColumn('standings', 'gf')) $table->integer('gf')->default(0);
+    if (!Schema::hasColumn('standings', 'ga')) $table->integer('ga')->default(0);
     if (!Schema::hasColumn('standings', 'created_at')) $table->timestamps();
 });
 echo "Tabla standings actualizada.\n";

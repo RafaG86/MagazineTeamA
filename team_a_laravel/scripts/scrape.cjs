@@ -36,16 +36,64 @@ async function scrape(url, mode = 'text') {
 
         await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
         
-        // Wait a bit more for dynamic content/ads to settle
-        await new Promise(r => setTimeout(r, 5000));
+        // Wait for table or content indicators (Posición, PJ, etc.)
+        await page.waitForFunction(() => {
+            const text = document.body.innerText;
+            return (text.includes('Posición') || text.includes('PJ') || text.includes('PTS')) && 
+                   !text.includes('Cargando') && 
+                   !text.includes('Loading');
+        }, { timeout: 30000 }).catch(() => console.log("Timeout waiting for specific text, proceeding anyway..."));
 
-        if (mode === 'screenshot') {
-            const outputPath = process.argv[4] || 'screenshot.png';
-            await page.screenshot({ path: outputPath, fullPage: false });
-            console.log('SCREENSHOT_SAVED:' + outputPath);
+        // Extra check: ensure table rows are present if it's a standings page
+        if (url.includes('clasificacion') || url.includes('posiciones') || url.includes('tabla')) {
+            await page.waitForSelector('table tr, .table tr, [role="row"]', { visible: true, timeout: 10000 }).catch(() => {});
+        }
+        
+        // Wait a bit more for dynamic content/ads to settle
+        await new Promise(r => setTimeout(r, 3000));
+
+        if (mode === 'text') {
+            const data = await page.evaluate(() => {
+                // Check if table is ready
+                const table = document.querySelector('table, .table, [role="row"]');
+                if (!table || table.innerText.length < 100) return "DOM_NOT_READY";
+
+                // Function to map colors/classes to V/D/E
+                const mapForm = (el) => {
+                    const style = window.getComputedStyle(el);
+                    const bgColor = style.backgroundColor;
+                    const className = el.className.toLowerCase();
+                    
+                    if (className.includes('win') || className.includes('vitoria') || bgColor.includes('rgb(0, 128, 0)') || bgColor.includes('rgb(46, 204, 113)')) return 'V';
+                    if (className.includes('loss') || className.includes('derrota') || bgColor.includes('rgb(255, 0, 0)') || bgColor.includes('rgb(231, 76, 60)')) return 'D';
+                    if (className.includes('draw') || className.includes('empate') || bgColor.includes('rgb(128, 128, 128)') || bgColor.includes('rgb(241, 196, 15)')) return 'E';
+                    return el.innerText.trim() || '?';
+                };
+
+                // Try to find form elements and replace their text
+                const formContainers = document.querySelectorAll('.streak, .form, .últimos-5');
+                formContainers.forEach(container => {
+                    const icons = container.querySelectorAll('span, div, i');
+                    if (icons.length > 0) {
+                        let streakText = "";
+                        icons.forEach(icon => streakText += mapForm(icon));
+                        container.setAttribute('data-extracted-streak', streakText);
+                        container.innerText = streakText; // Force text for scraper
+                    }
+                });
+
+                return document.body.innerText.substring(0, 10000);
+            });
+
+            if (data === "DOM_NOT_READY") {
+                console.error("DOM_NOT_READY");
+                process.exit(1);
+            }
+            console.log(data);
         } else {
-            const text = await page.evaluate(() => document.body.innerText.substring(0, 15000));
-            console.log(text);
+            const outputPath = process.argv[4] || 'screenshot.png';
+            await page.screenshot({ path: outputPath, fullPage: true });
+            console.log(outputPath);
         }
 
         await browser.close();
