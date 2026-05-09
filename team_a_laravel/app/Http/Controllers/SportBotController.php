@@ -20,18 +20,34 @@ class SportBotController extends Controller
             ->post('https://api.deepseek.com/v1/chat/completions', [
                 'model' => $model,
                 'messages' => [
-                    ['role' => 'system', 'content' => 'Eres un asistente deportivo experto. Responde ÚNICAMENTE con JSON puro que cumpla estrictamente el formato pedido.'],
+                    ['role' => 'system', 'content' => 'Eres un asistente deportivo experto. Responde ÚNICAMENTE con JSON puro. Sin bloques de código, sin texto adicional.'],
                     ['role' => 'user', 'content' => $prompt]
                 ],
                 'response_format' => ['type' => 'json_object'],
-                'temperature' => ($model === 'deepseek-reasoner' ? null : 0.2) // Reasoner doesn't support temperature
+                'temperature' => ($model === 'deepseek-reasoner' ? null : 0.2)
             ]);
 
         if ($response->failed()) {
             throw new \Exception("Error DeepSeek: " . $response->status());
         }
 
-        return json_decode($response->json()['choices'][0]['message']['content'] ?? '{}', true) ?? [];
+        $raw = $response->json()['choices'][0]['message']['content'] ?? '{}';
+
+        // Strip markdown code fences if DeepSeek adds them
+        $raw = preg_replace('/^```(?:json)?\s*/i', '', trim($raw));
+        $raw = preg_replace('/\s*```$/', '', $raw);
+        // Remove control characters (cause Unexpected token)
+        $raw = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $raw);
+
+        $parsed = json_decode($raw, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            Log::error('DeepSeek JSON error: ' . json_last_error_msg() . ' | Raw: ' . substr($raw, 0, 300));
+            preg_match('/\{[\s\S]*\}/', $raw, $m);
+            $parsed = json_decode($m[0] ?? '{}', true) ?? [];
+        }
+
+        return $parsed ?? [];
     }
 
     /**
