@@ -1,41 +1,38 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Next.js
+node_modules/
+.next/
+out/
+build/
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# Laravel
+team_a_laravel/vendor/
+team_a_laravel/storage/*.log
+team_a_laravel/storage/framework/cache/data/*
+team_a_laravel/storage/framework/sessions/*
+team_a_laravel/storage/framework/views/*.php
+team_a_laravel/storage/app/public/bot_screenshots/*.png
+team_a_laravel/storage/app/puppeteer_*
+team_a_laravel/bootstrap/cache/*.php
+team_a_laravel/public/storage
 
-# testing
-/coverage
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+team_a_laravel/.env
 
-# next.js
-/.next/
-/out/
+# Databases
+*.db
+*.db-journal
+*.sqlite
+team_a_laravel/database/database.sqlite
 
-# production
-/build
-
-# misc
+# OS
 .DS_Store
-*.pem
+Thumbs.db
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Misc
+debug_ia.log
+scratch/
