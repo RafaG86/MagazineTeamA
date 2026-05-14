@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Printer, CalendarDays, Plus, Heart, MessageSquare, X, Trophy, Edit3, Save, RefreshCw } from 'lucide-react';
+import { Printer, CalendarDays, Plus, Heart, MessageSquare, X, Trophy, Edit3, Save, RefreshCw, Bold, Italic, Underline, List, ListOrdered, Quote, Heading2, Heading3, Link as LinkIcon, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 
 const SECTIONS = [
   'Liga Betplay masculina',
@@ -12,7 +12,8 @@ const SECTIONS = [
   'Charla tecnica',
   'Efemerides',
   'Formula 1',
-  'Colombianos en el exterior'
+  'Colombianos en el exterior',
+  'Personalizada'
 ];
 
 export default function Home() {
@@ -37,10 +38,12 @@ export default function Home() {
   const [editMatches, setEditMatches] = useState<any[]>([]);
   
   const router = useRouter();
+  const editorRef = useRef<HTMLDivElement>(null);
   
   // Form state for posts
   const [formData, setFormData] = useState({
     section: SECTIONS[0],
+    customSection: '',
     title: '',
     content: ''
   });
@@ -161,16 +164,30 @@ export default function Home() {
       const method = editingPost ? 'PUT' : 'POST';
       const url = editingPost ? `/api/posts/${editingPost.id}` : '/api/posts';
       
+      // Sync content from the rich text editor
+      const editorContent = editorRef.current?.innerHTML || formData.content;
+      if (!editorContent || editorContent === '<br>' || editorContent.trim() === '') {
+        alert('El contenido del artículo no puede estar vacío.');
+        return;
+      }
+
+      const sectionToSave = formData.section === 'Personalizada' ? formData.customSection : formData.section;
+      
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, author: username })
+        body: JSON.stringify({ 
+          title: formData.title,
+          content: editorContent,
+          section: sectionToSave,
+          author: username 
+        })
       });
       
       if (res.ok) {
         setShowModal(false);
         setEditingPost(null);
-        setFormData({ section: SECTIONS[0], title: '', content: '' });
+        setFormData({ section: SECTIONS[0], customSection: '', title: '', content: '' });
         fetchData();
       }
     } catch (err) {
@@ -190,7 +207,13 @@ export default function Home() {
 
   const handleEditPost = (post: any) => {
     setEditingPost(post);
-    setFormData({ section: post.section, title: post.title, content: post.content });
+    const isCustom = !SECTIONS.slice(0, -1).includes(post.section);
+    setFormData({ 
+      section: isCustom ? 'Personalizada' : post.section, 
+      customSection: isCustom ? post.section : '',
+      title: post.title, 
+      content: post.content 
+    });
     setShowModal(true);
   };
 
@@ -696,7 +719,7 @@ export default function Home() {
 
               <div className="card-content" style={{ paddingTop: '0.5rem' }}>
                 <h2 className="card-title" style={{ fontSize: '1.4rem', fontWeight: '800' }}>{post.title}</h2>
-                <p className="card-text">{post.content}</p>
+                <div className="card-text rich-content" dangerouslySetInnerHTML={{ __html: post.content }} />
               </div>
 
               <div className="card-footer">
@@ -801,6 +824,18 @@ export default function Home() {
                   {SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
+              {formData.section === 'Personalizada' && (
+                <div className="form-group">
+                  <label>Nombre de la Sección Personalizada</label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="Ejem: Futbol Sala, Tenis, etc."
+                    value={formData.customSection}
+                    onChange={e => setFormData({...formData, customSection: e.target.value})}
+                  />
+                </div>
+              )}
               <div className="form-group">
                 <label>Título</label>
                 <input 
@@ -813,13 +848,41 @@ export default function Home() {
               </div>
               <div className="form-group">
                 <label>Contenido</label>
-                <textarea 
-                  required
-                  rows={5}
-                  placeholder="Escribe el cuerpo de la noticia..."
-                  value={formData.content}
-                  onChange={e => setFormData({...formData, content: e.target.value})}
-                ></textarea>
+                <div className="rte-toolbar">
+                  <button type="button" title="Negrita" onMouseDown={e => { e.preventDefault(); document.execCommand('bold'); }}><Bold size={16} /></button>
+                  <button type="button" title="Cursiva" onMouseDown={e => { e.preventDefault(); document.execCommand('italic'); }}><Italic size={16} /></button>
+                  <button type="button" title="Subrayado" onMouseDown={e => { e.preventDefault(); document.execCommand('underline'); }}><Underline size={16} /></button>
+                  <span className="rte-sep" />
+                  <button type="button" title="Título H2" onMouseDown={e => { e.preventDefault(); document.execCommand('formatBlock', false, 'H2'); }}><Heading2 size={16} /></button>
+                  <button type="button" title="Subtítulo H3" onMouseDown={e => { e.preventDefault(); document.execCommand('formatBlock', false, 'H3'); }}><Heading3 size={16} /></button>
+                  <span className="rte-sep" />
+                  <button type="button" title="Lista" onMouseDown={e => { e.preventDefault(); document.execCommand('insertUnorderedList'); }}><List size={16} /></button>
+                  <button type="button" title="Lista Numerada" onMouseDown={e => { e.preventDefault(); document.execCommand('insertOrderedList'); }}><ListOrdered size={16} /></button>
+                  <button type="button" title="Cita" onMouseDown={e => { e.preventDefault(); document.execCommand('formatBlock', false, 'BLOCKQUOTE'); }}><Quote size={16} /></button>
+                  <span className="rte-sep" />
+                  <button type="button" title="Alinear Izquierda" onMouseDown={e => { e.preventDefault(); document.execCommand('justifyLeft'); }}><AlignLeft size={16} /></button>
+                  <button type="button" title="Centrar" onMouseDown={e => { e.preventDefault(); document.execCommand('justifyCenter'); }}><AlignCenter size={16} /></button>
+                  <button type="button" title="Alinear Derecha" onMouseDown={e => { e.preventDefault(); document.execCommand('justifyRight'); }}><AlignRight size={16} /></button>
+                  <span className="rte-sep" />
+                  <button type="button" title="Enlace" onMouseDown={e => { 
+                    e.preventDefault(); 
+                    const url = prompt('Ingresa la URL del enlace:');
+                    if (url) document.execCommand('createLink', false, url);
+                  }}><LinkIcon size={16} /></button>
+                </div>
+                <div 
+                  ref={editorRef}
+                  className="rte-editor"
+                  contentEditable 
+                  suppressContentEditableWarning
+                  dangerouslySetInnerHTML={{ __html: formData.content }}
+                  onBlur={() => {
+                    if (editorRef.current) {
+                      setFormData(prev => ({ ...prev, content: editorRef.current!.innerHTML }));
+                    }
+                  }}
+                  data-placeholder="Escribe el cuerpo de la noticia..."
+                />
               </div>
               <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
                 <button type="submit" className="btn">{editingPost ? 'Actualizar' : 'Publicar'}</button>
