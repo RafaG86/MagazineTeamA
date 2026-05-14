@@ -36,6 +36,7 @@ export default function Home() {
   const [showDebugModal, setShowDebugModal] = useState(false);
   const [debugInfo, setDebugInfo] = useState({ raw: '', processed: null });
   const [editMatches, setEditMatches] = useState<any[]>([]);
+  const [expandedPosts, setExpandedPosts] = useState<Record<number, boolean>>({});
   
   const router = useRouter();
   const editorRef = useRef<HTMLDivElement>(null);
@@ -700,8 +701,19 @@ export default function Home() {
             Aún no hay publicaciones en esta edición. ¡Sé el primero en escribir!
           </p>
         ) : (
-          posts.map((post: any) => (
-            <article key={post.id} className="card">
+          posts.map((post: any) => {
+            const isExpanded = expandedPosts[post.id];
+            return (
+            <article 
+              key={post.id} 
+              className={`card article-card ${isExpanded ? 'expanded' : ''}`}
+              onClick={(e) => {
+                // Don't expand if clicking buttons
+                if ((e.target as HTMLElement).closest('button, a, input')) return;
+                setExpandedPosts(prev => ({ ...prev, [post.id]: !prev[post.id] }));
+              }}
+              style={{ cursor: 'pointer' }}
+            >
               <div className="card-header">
                 <div className="author-info">
                   <div className="author-avatar">
@@ -714,95 +726,138 @@ export default function Home() {
                     </span>
                   </div>
                 </div>
-                <span className="card-tag" style={{ margin: 0, fontSize: '0.65rem' }}>{post.section}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span className="card-tag" style={{ margin: 0, fontSize: '0.65rem' }}>{post.section}</span>
+                  <span style={{
+                    color: 'var(--text-muted)',
+                    transition: 'transform 0.35s ease',
+                    transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </span>
+                </div>
               </div>
 
               <div className="card-content" style={{ paddingTop: '0.5rem' }}>
                 <h2 className="card-title" style={{ fontSize: '1.4rem', fontWeight: '800' }}>{post.title}</h2>
-                <div className="card-text rich-content" dangerouslySetInnerHTML={{ __html: post.content }} />
-              </div>
+                
+                {/* Content body — CSS handles truncation on desktop */}
+                <div className={`article-body ${isExpanded ? 'expanded' : ''}`}>
+                  <div className="card-text rich-content" dangerouslySetInnerHTML={{ __html: post.content }} />
+                  <div className="article-fade" />
+                </div>
 
-              <div className="card-footer">
-                <div className="card-actions">
-                  <button className="action-item" style={{ background: 'none', border: 'none' }}>
-                    <Heart size={18} />
-                    <span>{post.likes_count || 0}</span>
-                  </button>
-                  <button 
-                    className="action-item" 
-                    style={{ background: 'none', border: 'none' }}
-                    onClick={() => {
-                      const newShow = { ...showComments };
-                      newShow[post.id] = !newShow[post.id];
-                      setShowComments(newShow);
-                    }}
+                {/* Desktop hint */}
+                {!isExpanded && <span className="read-more-hint desktop-only">Clic para leer más</span>}
+
+                {/* Mobile-only expand button */}
+                <button 
+                  className="mobile-expand-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedPosts(prev => ({ ...prev, [post.id]: !prev[post.id] }));
+                  }}
+                >
+                  <svg 
+                    width="16" height="16" viewBox="0 0 24 24" fill="none" 
+                    stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                    style={{ transition: 'transform 0.3s ease', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
                   >
-                    <MessageSquare size={18} />
-                    <span>{post.comments_count || 0}</span>
-                  </button>
-                  
-                  {isAdmin && (
-                    <>
-                      <button 
-                        className="action-item" 
-                        style={{ background: 'none', border: 'none' }}
-                        onClick={() => handleEditPost(post)}
-                      >
-                        <Edit3 size={18} />
-                      </button>
-                      <button 
-                        className="action-item" 
-                        style={{ background: 'none', border: 'none', color: 'var(--danger)' }}
-                        onClick={() => handleDeletePost(post.id)}
-                      >
-                        <X size={18} />
-                      </button>
-                    </>
-                  )}
-                </div>
-                <div className="action-item">
-                  <Printer size={16} />
-                </div>
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                  {isExpanded ? 'Ver menos' : 'Ver más'}
+                </button>
               </div>
 
-              {showComments[post.id] && (
-                <div style={{ padding: '1.5rem', background: 'rgba(0,0,0,0.2)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div style={{ marginBottom: '1rem' }}>
-                    {post.comments && post.comments.length > 0 ? (
-                      post.comments.map((comment: any) => (
-                        <div key={comment.id} style={{ marginBottom: '0.75rem', fontSize: '0.85rem' }}>
-                          <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{comment.author}: </span>
-                          <span style={{ color: 'var(--foreground)' }}>{comment.content}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No hay comentarios aún.</p>
+              {/* Footer — always rendered, CSS hides on desktop when collapsed */}
+              <div className={`card-footer-wrap ${isExpanded ? 'expanded' : ''}`}>
+                <div className="card-footer">
+                  <div className="card-actions">
+                    <button className="action-item" style={{ background: 'none', border: 'none' }}>
+                      <Heart size={18} />
+                      <span>{post.likes_count || 0}</span>
+                    </button>
+                    <button 
+                      className="action-item" 
+                      style={{ background: 'none', border: 'none' }}
+                      onClick={() => {
+                        const newShow = { ...showComments };
+                        newShow[post.id] = !newShow[post.id];
+                        setShowComments(newShow);
+                      }}
+                    >
+                      <MessageSquare size={18} />
+                      <span>{post.comments_count || 0}</span>
+                    </button>
+                    
+                    {isAdmin && (
+                      <>
+                        <button 
+                          className="action-item" 
+                          style={{ background: 'none', border: 'none' }}
+                          onClick={() => handleEditPost(post)}
+                        >
+                          <Edit3 size={18} />
+                        </button>
+                        <button 
+                          className="action-item" 
+                          style={{ background: 'none', border: 'none', color: 'var(--danger)' }}
+                          onClick={() => handleDeletePost(post.id)}
+                        >
+                          <X size={18} />
+                        </button>
+                      </>
                     )}
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <input 
-                      type="text" 
-                      placeholder="Escribe un comentario..." 
-                      style={{ 
-                        flexGrow: 1, 
-                        background: 'var(--background)', 
-                        border: '1px solid var(--border)', 
-                        borderRadius: '8px', 
-                        padding: '0.5rem 0.75rem',
-                        fontSize: '0.85rem',
-                        color: 'white'
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          // Lógica para enviar comentario
-                        }
-                      }}
-                    />
+                  <div className="action-item">
+                    <Printer size={16} />
                   </div>
                 </div>
-              )}
+
+                {showComments[post.id] && (
+                  <div style={{ padding: '1.5rem', background: 'rgba(0,0,0,0.2)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ marginBottom: '1rem' }}>
+                      {post.comments && post.comments.length > 0 ? (
+                        post.comments.map((comment: any) => (
+                          <div key={comment.id} style={{ marginBottom: '0.75rem', fontSize: '0.85rem' }}>
+                            <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{comment.author}: </span>
+                            <span style={{ color: 'var(--foreground)' }}>{comment.content}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No hay comentarios aún.</p>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input 
+                        type="text" 
+                        placeholder="Escribe un comentario..." 
+                        style={{ 
+                          flexGrow: 1, 
+                          background: 'var(--background)', 
+                          border: '1px solid var(--border)', 
+                          borderRadius: '8px', 
+                          padding: '0.5rem 0.75rem',
+                          fontSize: '0.85rem',
+                          color: 'white'
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            // Lógica para enviar comentario
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </article>
-          ))
+            );
+          })
         )}
       </div>
 

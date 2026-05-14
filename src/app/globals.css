@@ -311,10 +311,6 @@ a {
 
   .card-text {
     font-size: 0.85rem;
-    -webkit-line-clamp: 4;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
   }
 
   .card-footer {
@@ -961,4 +957,165 @@ a {
 
 .rich-content p {
   margin-bottom: 0.5rem;
+}
+
+/* =============================================
+   ARTICLE EXPAND-ON-TAP
+   ============================================= */
+
+/* — Base card transition — */
+.article-card {
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.article-card.expanded {
+  border-color: rgba(245, 158, 11, 0.25);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+/* — Article body: truncated by default — */
+.article-body {
+  position: relative;
+  max-height: 100px;
+  overflow: hidden;
+  transition: max-height 0.4s ease;
+}
+
+.article-body.expanded {
+  max-height: 10000px;
+}
+
+.article-body.expanded .article-fade {
+  display: none;
+}
+
+/* — Gradient fade — */
+.article-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 50px;
+  background: linear-gradient(to bottom, transparent, rgba(30, 41, 59, 0.95));
+  pointer-events: none;
+}
+
+/* — Desktop "read more" hint — */
+.read-more-hint.desktop-only {
+  display: block;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--primary);
+  letter-spacing: 0.04em;
+  padding-top: 0.4rem;
+  opacity: 0.8;
+}
+
+/* — Footer wrapper: desktop collapsed — */
+.card-footer-wrap {
+  display: none;
+}
+
+.card-footer-wrap.expanded {
+  display: block;
+  animation: expandIn 0.3s ease forwards;
+}
+
+@keyframes expandIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* — Mobile expand button: HIDDEN on desktop — */
+.mobile-expand-btn {
+  display: none;
+}
+
+/* =============================================
+   DESKTOP: hover + pointer on cards
+   ============================================= */
+@media (min-width: 769px) {
+  .article-card:hover {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* =============================================
+   MOBILE (≤768px): Full content, no truncation
+   ============================================= */
+@media (max-width: 768px) {
+
+  /* Force card to NOT clip expanded content */
+  .article-card.card {
+    overflow: visible !important;
+  }
+
+  /* Remove all truncation */
+  .article-body {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* But when collapsed on mobile, limit to ~5 lines */
+  .article-body:not(.expanded) {
+    max-height: 110px !important;
+    overflow: hidden !important;
+  }
+
+  /* Hide gradient fade on mobile — the button replaces it */
+  .article-fade {
+    display: none !important;
+  }
+
+  /* Hide desktop hint on mobile */
+  .read-more-hint.desktop-only {
+    display: none !important;
+  }
+
+  /* Show mobile expand button */
+  .mobile-expand-btn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 0.6rem;
+    margin-top: 0.5rem;
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 10px;
+    color: var(--primary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .mobile-expand-btn:active {
+    background: rgba(245, 158, 11, 0.18);
+    transform: scale(0.97);
+  }
+
+  /* Footer always visible on mobile */
+  .card-footer-wrap {
+    display: block !important;
+    animation: none !important;
+  }
+
+  /* Hide chevron in header on mobile */
+  .article-card .card-header svg {
+    display: none;
+  }
+
+  /* Disable pointer cursor on mobile card body */
+  .article-card {
+    cursor: default !important;
+  }
+
+  /* Disable hover lift on mobile */
+  .article-card:hover {
+    transform: none !important;
+  }
 }
