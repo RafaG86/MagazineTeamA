@@ -9,7 +9,11 @@ class PostController extends Controller
 {
     public function index()
     {
-        $posts = Post::latest()->get();
+        $posts = Post::with(['comments'])
+            ->withCount(['comments', 'likes'])
+            ->latest()
+            ->get();
+            
         return response()->json([
             'posts' => $posts,
             'edition' => date('d/m/Y')
@@ -18,13 +22,36 @@ class PostController extends Controller
 
     public function store(Request $request)
     {
-        $post = Post::create($request->all());
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'content' => 'required|string',
+            'section' => 'required|string',
+            'author' => 'nullable|string'
+        ]);
+
+        $post = Post::create($validated);
+        return response()->json($post, 201);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $post = Post::findOrFail($id);
+        
+        $validated = $request->validate([
+            'title' => 'sometimes|required|string|max:255',
+            'content' => 'sometimes|required|string',
+            'section' => 'sometimes|required|string',
+            'author' => 'nullable|string'
+        ]);
+
+        $post->update($validated);
         return response()->json($post);
     }
 
     public function destroy($id)
     {
-        Post::destroy($id);
-        return response()->json(['success' => true]);
+        $post = Post::findOrFail($id);
+        $post->delete();
+        return response()->json(['message' => 'Post eliminado correctamente']);
     }
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { LogOut, Home, Shield } from 'lucide-react';
+import { LogOut, Home, Shield, Trophy } from 'lucide-react';
 
 export default function Navbar() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -23,9 +23,40 @@ export default function Navbar() {
 
   return (
     <header className="header">
-      <div className="brand">
-        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg>
-        Team A para Encasa Radio
+      <div className="brand" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ 
+            background: 'linear-gradient(135deg, var(--primary), var(--accent))',
+            padding: '6px',
+            borderRadius: '8px',
+            display: 'flex',
+            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
+          }}>
+            <Trophy size={20} color="white" />
+          </div>
+          <span style={{ 
+            fontSize: '1.4rem', 
+            fontWeight: '900', 
+            letterSpacing: '-0.02em',
+            background: 'linear-gradient(to right, #ffffff, #94a3b8)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            fontFamily: 'Outfit, sans-serif'
+          }}>
+            TEAM <span style={{ color: 'var(--primary)' }}>A</span>
+          </span>
+        </div>
+        <span style={{ 
+          fontSize: '0.6rem', 
+          textTransform: 'uppercase', 
+          letterSpacing: '0.2em', 
+          color: 'var(--text-muted)',
+          marginLeft: '34px',
+          marginTop: '-2px',
+          fontWeight: '600'
+        }}>
+          Sports Media Group
+        </span>
       </div>
       <nav style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
         <a href="/" className="btn btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>

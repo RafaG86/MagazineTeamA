@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 
-const LARAVEL_API = 'http://localhost:3001/api/bot';
+const LARAVEL_API = 'http://localhost:8000/api/bot';
 
 export async function GET(
   request: Request,
-  { params }: { params: { slug: string[] } }
+  { params }: { params: Promise<{ slug: string[] }> }
 ) {
   try {
-    const action = params.slug.join('/');
+    const resolvedParams = await params;
+    const action = resolvedParams.slug.join('/');
     const res = await fetch(`${LARAVEL_API}/${action}`, { cache: 'no-store' });
     const data = await res.json();
     return NextResponse.json(data);
@@ -18,10 +19,11 @@ export async function GET(
 
 export async function POST(
   request: Request,
-  { params }: { params: { slug: string[] } }
+  { params }: { params: Promise<{ slug: string[] }> }
 ) {
   try {
-    const action = params.slug.join('/');
+    const resolvedParams = await params;
+    const action = resolvedParams.slug.join('/');
     const body = await request.json();
     const res = await fetch(`${LARAVEL_API}/${action}`, {
       method: 'POST',

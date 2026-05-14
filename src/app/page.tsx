@@ -18,6 +18,9 @@ const SECTIONS = [
 export default function Home() {
   const [posts, setPosts] = useState<any[]>([]);
   const [standings, setStandings] = useState<any[]>([]);
+  const [showComments, setShowComments] = useState<Record<number, boolean>>({});
+  const [editingPost, setEditingPost] = useState<any>(null);
+  const [editingMatch, setEditingMatch] = useState<any>(null);
   const [matches, setMatches] = useState<any[]>([]);
   const [edition, setEdition] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -27,6 +30,7 @@ export default function Home() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showStandingsModal, setShowStandingsModal] = useState(false);
+  const [showStandings, setShowStandings] = useState(false);
   const [showMatchesModal, setShowMatchesModal] = useState(false);
   const [showDebugModal, setShowDebugModal] = useState(false);
   const [debugInfo, setDebugInfo] = useState({ raw: '', processed: null });
@@ -39,6 +43,17 @@ export default function Home() {
     section: SECTIONS[0],
     title: '',
     content: ''
+  });
+
+  const [matchFormData, setMatchFormData] = useState<any>({
+    tournament: 'Liga BetPlay',
+    home_team: '',
+    away_team: '',
+    home_score: 0,
+    away_score: 0,
+    status: 'scheduled',
+    round: '',
+    comments: ''
   });
 
   // State for editing standings
@@ -143,40 +158,73 @@ export default function Home() {
     e.preventDefault();
     try {
       const username = localStorage.getItem('username');
-      const res = await fetch('/api/posts', {
-        method: 'POST',
+      const method = editingPost ? 'PUT' : 'POST';
+      const url = editingPost ? `/api/posts/${editingPost.id}` : '/api/posts';
+      
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, username })
+        body: JSON.stringify({ ...formData, author: username })
       });
+      
       if (res.ok) {
         setShowModal(false);
+        setEditingPost(null);
         setFormData({ section: SECTIONS[0], title: '', content: '' });
         fetchData();
       }
     } catch (err) {
-      console.error('Error creating post:', err);
+      console.error('Error saving post:', err);
     }
   };
 
-  const handleUpdateStandings = async () => {
+  const handleDeletePost = async (id: number) => {
+    if (!confirm('¿Estás seguro de eliminar este artículo?')) return;
     try {
-      const username = localStorage.getItem('username');
-      const res = await fetch('/api/standings', {
-        method: 'POST',
+      const res = await fetch(`/api/posts/${id}`, { method: 'DELETE' });
+      if (res.ok) fetchData();
+    } catch (err) {
+      console.error('Error deleting post:', err);
+    }
+  };
+
+  const handleEditPost = (post: any) => {
+    setEditingPost(post);
+    setFormData({ section: post.section, title: post.title, content: post.content });
+    setShowModal(true);
+  };
+
+  const handleSubmitMatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const method = editingMatch ? 'PUT' : 'POST';
+      const url = editingMatch ? `/api/matches/${editingMatch.id}` : '/api/matches';
+
+      // Sanitize: don't send empty strings as null will be handled by backend
+      const payload = {
+        ...matchFormData,
+        source: matchFormData.source || 'manual',
+        match_time: matchFormData.match_time?.trim() || null,
+        match_date: matchFormData.match_date?.trim() || null,
+      };
+      
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ standings: editStandings, username })
+        body: JSON.stringify(payload)
       });
+      
       if (res.ok) {
-        alert('¡Tabla actualizada con éxito!');
-        setShowStandingsModal(false);
+        setShowMatchesModal(false);
+        setEditingMatch(null);
         fetchData();
       } else {
-        const data = await res.json();
-        alert('Error al actualizar: ' + data.error);
+        const err = await res.json();
+        alert('Error al guardar: ' + (err.message || res.statusText));
       }
-    } catch (err: any) {
-      console.error('Error updating standings:', err);
-      alert('Error de conexión: ' + err.message);
+    } catch (err) {
+      console.error('Error saving match:', err);
+      alert('Error de conexión al guardar el partido.');
     }
   };
 
@@ -240,22 +288,7 @@ export default function Home() {
   };
 
   const handleBotResults = async () => {
-    const interval = simulateProgress();
-    try {
-      const res = await fetch(`/api/bot/results?v=${Date.now()}`);
-      const data = await res.json();
-      if (data.matches) {
-        setProgress(100);
-        setTimeout(() => alert('¡IA: Resultados de Liga BetPlay actualizados!'), 200);
-        fetchData();
-      }
-    } catch (err) {
-      alert('Error al traer marcadores.');
-    } finally {
-      clearInterval(interval);
-      setBotLoading(false);
-      setProgress(0);
-    }
+    alert('Sincronización de resultados IA deshabilitada por solicitud editorial.');
   };
 
   const handleUclResults = async () => {
@@ -366,30 +399,6 @@ export default function Home() {
     reader.readAsDataURL(file);
   };
 
-  const handleBotResults = async () => {
-    const interval = simulateProgress();
-    try {
-      const res = await fetch(`/api/bot/results?v=${Date.now()}`);
-      const data = await res.json();
-      if (data.matches) {
-        const username = localStorage.getItem('username');
-        await fetch('/api/matches', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ matches: data.matches, username })
-        });
-        setProgress(100);
-        fetchData();
-        setTimeout(() => alert('¡IA Team A: Marcadores de la fecha actualizados!'), 200);
-      }
-    } catch (err) {
-      alert('Error al buscar resultados.');
-    } finally {
-      clearInterval(interval);
-      setBotLoading(false);
-      setProgress(0);
-    }
-  };
 
   if (!authorized || loading) {
     return null;
@@ -420,190 +429,244 @@ export default function Home() {
             <Printer size={18} />
             Imprimir PDF
           </button>
+          <button className="btn btn-secondary" onClick={() => setShowStandings(!showStandings)}>
+            <Trophy size={18} style={{ marginRight: '6px' }} />
+            {showStandings ? 'Ocultar Tablas' : 'Ver Tablas de Posiciones'}
+          </button>
           {isAdmin && (
-            <button className="btn" onClick={() => setShowModal(true)}>
-              <Plus size={18} />
-              Nuevo Artículo
-            </button>
+            <>
+              <button className="btn btn-secondary" onClick={() => { setEditingMatch(null); setMatchFormData({ tournament: 'Liga BetPlay', home_team: '', away_team: '', home_score: 0, away_score: 0, status: 'scheduled', round: '', comments: '', source: 'manual', match_date: new Date().toISOString().split('T')[0], match_time: '' }); setShowMatchesModal(true); }}>
+                <Trophy size={18} style={{ marginRight: '6px' }} />
+                Nuevo Partido
+              </button>
+              <button className="btn" onClick={() => { setEditingPost(null); setFormData({ section: SECTIONS[0], title: '', content: '' }); setShowModal(true); }}>
+                <Plus size={18} style={{ marginRight: '6px' }} />
+                Nuevo Artículo
+              </button>
+            </>
           )}
         </div>
       </div>
-
-      <section className="table-container">
-        <div className="table-header">
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Trophy size={20} color="var(--primary)" />
-            Tabla de Posiciones - Liga BetPlay
-          </h3>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {isAdmin && (
-              <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={handleBotStandings}>
-                <RefreshCw size={14} style={{ marginRight: '4px' }} />
-                IA Tabla
-              </button>
-            )}
-            {isAdmin && (
-              <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={() => {
-                setEditStandings(standings.filter(s => s.division === 'A' || s.division === 'DIMAYOR' || !s.division));
-                setShowStandingsModal(true);
-              }}>
-                <Edit3 size={14} style={{ marginRight: '4px' }} />
-                Editar
-              </button>
-            )}
-          </div>
-        </div>
-        <table className="league-table">
-          <thead>
-            <tr>
-              <th>POS</th>
-              <th>EQUIPO</th>
-              <th>PJ</th>
-              <th>GD</th>
-              <th>PTS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {standings.filter(s => s.division === 'A' || s.division === 'DIMAYOR' || !s.division).map((item) => (
-              <tr key={item.id || item.team}>
-                <td>
-                  <span className={`pos-badge ${item.pos <= 8 ? 'pos-top' : ''}`}>
-                    {item.pos}
-                  </span>
-                </td>
-                <td style={{ fontWeight: 600 }}>{item.team}</td>
-                <td>{item.pj}</td>
-                <td>{item.gd}</td>
-                <td style={{ fontWeight: 700, color: 'var(--primary)' }}>{item.pts}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      <section className="table-container" style={{ marginTop: '2rem' }}>
-        <div className="table-header">
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Trophy size={20} color="#3b82f6" />
-            UEFA Champions League - Fase de Liga
-          </h3>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {isAdmin && (
-              <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={handleUclStandings}>
-                <RefreshCw size={14} style={{ marginRight: '4px' }} />
-                IA Champions
-              </button>
-            )}
-          </div>
-        </div>
-        <table className="league-table">
-          <thead>
-            <tr>
-              <th>POS</th>
-              <th>EQUIPO</th>
-              <th>PJ</th>
-              <th>GD</th>
-              <th>PTS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {standings.filter(s => s.division === 'UCL_LEAGUE').map((item) => (
-              <tr key={item.id || item.team}>
-                <td>
-                  <span className={`pos-badge ${item.pos <= 8 ? 'pos-top' : item.pos <= 24 ? 'pos-mid' : ''}`} style={{ backgroundColor: item.pos <= 8 ? '#10b981' : item.pos <= 24 ? '#3b82f6' : '' }}>
-                    {item.pos}
-                  </span>
-                </td>
-                <td style={{ fontWeight: 600 }}>{item.team}</td>
-                <td>{item.pj}</td>
-                <td>{item.gd}</td>
-                <td style={{ fontWeight: 700, color: '#3b82f6' }}>{item.pts}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {standings.filter(s => s.division === 'UCL_LEAGUE').length === 0 && (
-          <p style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)' }}>Pulsa "IA Champions" para traer la tabla actualizada.</p>
-        )}
-      </section>
-
-      <section className="matches-section" style={{ marginTop: '2rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h3 style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <CalendarDays size={20} />
-            Liga BetPlay - Resultados
-          </h3>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {isAdmin && (
-              <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={handleBotResults}>
-                <RefreshCw size={14} style={{ marginRight: '4px' }} />
-                IA Marcadores
-              </button>
-            )}
-            {isAdmin && (
-              <button 
-                className="btn btn-secondary" 
-                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-                onClick={() => {
-                  setEditMatches(matches.filter(m => m.tournament !== 'Champions League'));
-                  setShowMatchesModal(true);
-                }}
-              >
-                <Edit3 size={14} style={{ marginRight: '4px' }} />
-                Editar
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="matches-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
-          {matches.filter(m => m.tournament !== 'Champions League').map((m, idx) => (
-            <div key={idx} className="card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{m.home_team}</span>
-                <span style={{ background: 'var(--bg-secondary)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, color: 'var(--primary)' }}>{m.home_score}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{m.away_team}</span>
-                <span style={{ background: 'var(--bg-secondary)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, color: 'var(--primary)' }}>{m.away_score}</span>
+      {showStandings && (
+        <>
+          <section className="table-container" style={{ marginBottom: '3rem' }}>
+            <div className="table-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Trophy size={20} color="var(--primary)" />
+                Tabla de Posiciones - Liga BetPlay
+              </h3>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {isAdmin && (
+                  <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={handleBotStandings}>
+                    <RefreshCw size={14} style={{ marginRight: '4px' }} />
+                    Sincronizar IA
+                  </button>
+                )}
+                {isAdmin && (
+                  <button 
+                    className="btn btn-secondary" 
+                    style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                    onClick={() => {
+                      setEditStandings(standings.filter(s => s.division === 'DIMAYOR'));
+                      setShowStandingsModal(true);
+                    }}
+                  >
+                    <Edit3 size={14} style={{ marginRight: '4px' }} />
+                    Editar
+                  </button>
+                )}
               </div>
             </div>
-          ))}
-        </div>
-      </section>
+            <div className="table-wrapper">
+              <table className="league-table">
+                <thead>
+                  <tr>
+                    <th>POS</th>
+                    <th>EQUIPO</th>
+                    <th>PJ</th>
+                    <th>GD</th>
+                    <th>PTS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {standings.filter(s => s.division === 'DIMAYOR' || s.division === 'A' || !s.division).map((item) => (
+                    <tr key={item.id || item.team}>
+                      <td>
+                        <span className={`pos-badge ${item.pos <= 8 ? 'pos-top' : ''}`}>
+                          {item.pos}
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{item.team}</td>
+                      <td>{item.pj}</td>
+                      <td>{item.gd}</td>
+                      <td style={{ fontWeight: 700, color: 'var(--primary)' }}>{item.pts}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
-      <section className="matches-section" style={{ marginTop: '2rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h3 style={{ color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <CalendarDays size={20} />
-            Champions League - Marcadores
-          </h3>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {isAdmin && (
-              <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={handleUclResults}>
-                <RefreshCw size={14} style={{ marginRight: '4px' }} />
-                IA UCL Marcadores
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="matches-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
-          {matches.filter(m => m.tournament === 'Champions League').map((m, idx) => (
-            <div key={idx} className="card" style={{ padding: '1rem', borderLeft: '4px solid #3b82f6' }}>
-              <div style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
-                {m.round}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{m.home_team}</span>
-                <span style={{ background: 'var(--bg-secondary)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, color: '#3b82f6' }}>{m.home_score}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{m.away_team}</span>
-                <span style={{ background: 'var(--bg-secondary)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, color: '#3b82f6' }}>{m.away_score}</span>
+          <section className="table-container" style={{ marginBottom: '3rem' }}>
+            <div className="table-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#3b82f6' }}>
+                <Trophy size={20} />
+                UEFA Champions League
+              </h3>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {isAdmin && (
+                  <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={handleUclStandings}>
+                    <RefreshCw size={14} style={{ marginRight: '4px' }} />
+                    IA Champions
+                  </button>
+                )}
               </div>
             </div>
-          ))}
-          {matches.filter(m => m.tournament === 'Champions League').length === 0 && (
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', gridColumn: '1/-1' }}>Pulsa "IA UCL Marcadores" para traer la última fecha.</p>
+            <div className="table-wrapper">
+              <table className="league-table">
+                <thead>
+                  <tr>
+                    <th>POS</th>
+                    <th>EQUIPO</th>
+                    <th>PJ</th>
+                    <th>GD</th>
+                    <th>PTS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {standings.filter(s => s.division === 'UCL_LEAGUE').map((item) => (
+                    <tr key={item.id || item.team}>
+                      <td>
+                        <span className={`pos-badge ${item.pos <= 8 ? 'pos-top' : item.pos <= 24 ? 'pos-mid' : ''}`} style={{ backgroundColor: item.pos <= 8 ? '#10b981' : item.pos <= 24 ? '#3b82f6' : '' }}>
+                          {item.pos}
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{item.team}</td>
+                      <td>{item.pj}</td>
+                      <td>{item.gd}</td>
+                      <td style={{ fontWeight: 700, color: '#3b82f6' }}>{item.pts}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+
+
+      {/* Partidos Manuales (Programación y Reportes) */}
+      <section className="matches-section" style={{ marginBottom: '3rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <CalendarDays size={28} color="var(--accent)" />
+            Agenda y Reportes de Partidos
+          </h2>
+        </div>
+
+        <div className="matches-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '2rem' }}>
+          {matches.filter(m => m.source !== 'ia').length === 0 ? (
+            <p style={{ gridColumn: '1/-1', textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No hay reportes de partidos manuales.</p>
+          ) : (
+            matches.filter(m => m.source !== 'ia').map((m) => (
+              <div key={m.id} className="match-card manual-match" style={{ borderLeft: '4px solid var(--accent)' }}>
+                {/* Status badge + date/time */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <span style={{
+                    padding: '3px 10px',
+                    borderRadius: '999px',
+                    fontSize: '0.7rem',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    background: m.status === 'finished' ? 'rgba(16,185,129,0.15)' : m.status === 'live' ? 'rgba(239,68,68,0.15)' : 'rgba(100,116,139,0.2)',
+                    color: m.status === 'finished' ? '#10b981' : m.status === 'live' ? '#ef4444' : '#94a3b8',
+                    letterSpacing: '0.05em'
+                  }}>
+                    {m.status === 'finished' ? '✓ Finalizado' : m.status === 'live' ? '● En Vivo' : '⌚ Programado'}
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    {m.match_date ? new Date(m.match_date + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+                    {m.match_time ? ` • ${m.match_time}` : ''}
+                  </span>
+                </div>
+                
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
+                  {m.tournament} • {m.round}
+                </div>
+
+                <div className="match-teams" style={{ padding: '0.5rem 0' }}>
+                  <div className="team-row">
+                    <span className="team-name" style={{ fontSize: '1.1rem' }}>{m.home_team}</span>
+                    <span className="team-score" style={{ background: 'var(--accent)', color: '#000' }}>{m.home_score}</span>
+                  </div>
+                  <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', margin: '-4px 0' }}>VS</div>
+                  <div className="team-row">
+                    <span className="team-name" style={{ fontSize: '1.1rem' }}>{m.away_team}</span>
+                    <span className="team-score" style={{ background: 'var(--accent)', color: '#000' }}>{m.away_score}</span>
+                  </div>
+                </div>
+
+                {m.comments && (
+                  <div className="match-meta" style={{ background: 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: '8px' }}>
+                    <div className="match-commentary" style={{ margin: 0, color: 'var(--text-light)' }}>{m.comments}</div>
+                  </div>
+                )}
+
+                {isAdmin && (
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'flex-end', 
+                    gap: '0.75rem', 
+                    marginTop: '1.25rem', 
+                    borderTop: '1px solid rgba(255,255,255,0.08)', 
+                    paddingTop: '1rem' 
+                  }}>
+                    <button 
+                      onClick={() => { setEditingMatch(m); setMatchFormData({...m}); setShowMatchesModal(true); }}
+                      style={{ 
+                        background: 'rgba(59, 130, 246, 0.1)', 
+                        color: '#60a5fa',
+                        border: '1px solid rgba(59, 130, 246, 0.2)',
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(59, 130, 246, 0.2)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)'; }}
+                    >
+                      <Edit3 size={14} /> Editar
+                    </button>
+                    <button 
+                      onClick={async () => { if(confirm('¿Eliminar reporte?')) { await fetch(`/api/matches/${m.id}`, {method:'DELETE'}); fetchData(); } }}
+                      style={{ 
+                        background: 'rgba(239, 68, 68, 0.1)', 
+                        color: '#f87171',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; }}
+                    >
+                      <X size={14} /> Eliminar
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
           )}
         </div>
       </section>
@@ -616,24 +679,105 @@ export default function Home() {
         ) : (
           posts.map((post: any) => (
             <article key={post.id} className="card">
-              <div className="card-content">
-                <span className="card-tag">{post.section}</span>
-                <h2 className="card-title">{post.title}</h2>
+              <div className="card-header">
+                <div className="author-info">
+                  <div className="author-avatar">
+                    {post.author ? post.author[0].toUpperCase() : 'U'}
+                  </div>
+                  <div className="author-details">
+                    <span className="author-name">{post.author || 'Usuario Team A'}</span>
+                    <span className="post-time">
+                      {new Date(post.created_at).toLocaleDateString()} • {new Date(post.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+                <span className="card-tag" style={{ margin: 0, fontSize: '0.65rem' }}>{post.section}</span>
+              </div>
+
+              <div className="card-content" style={{ paddingTop: '0.5rem' }}>
+                <h2 className="card-title" style={{ fontSize: '1.4rem', fontWeight: '800' }}>{post.title}</h2>
                 <p className="card-text">{post.content}</p>
               </div>
+
               <div className="card-footer">
-                <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                  {new Date(post.created_at).toLocaleDateString()}
-                </span>
-                <div style={{ display: 'flex', gap: '1rem', color: 'var(--text-muted)' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem' }}>
-                    <Heart size={16} /> 0
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem' }}>
-                    <MessageSquare size={16} /> 0
-                  </span>
+                <div className="card-actions">
+                  <button className="action-item" style={{ background: 'none', border: 'none' }}>
+                    <Heart size={18} />
+                    <span>{post.likes_count || 0}</span>
+                  </button>
+                  <button 
+                    className="action-item" 
+                    style={{ background: 'none', border: 'none' }}
+                    onClick={() => {
+                      const newShow = { ...showComments };
+                      newShow[post.id] = !newShow[post.id];
+                      setShowComments(newShow);
+                    }}
+                  >
+                    <MessageSquare size={18} />
+                    <span>{post.comments_count || 0}</span>
+                  </button>
+                  
+                  {isAdmin && (
+                    <>
+                      <button 
+                        className="action-item" 
+                        style={{ background: 'none', border: 'none' }}
+                        onClick={() => handleEditPost(post)}
+                      >
+                        <Edit3 size={18} />
+                      </button>
+                      <button 
+                        className="action-item" 
+                        style={{ background: 'none', border: 'none', color: 'var(--danger)' }}
+                        onClick={() => handleDeletePost(post.id)}
+                      >
+                        <X size={18} />
+                      </button>
+                    </>
+                  )}
+                </div>
+                <div className="action-item">
+                  <Printer size={16} />
                 </div>
               </div>
+
+              {showComments[post.id] && (
+                <div style={{ padding: '1.5rem', background: 'rgba(0,0,0,0.2)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ marginBottom: '1rem' }}>
+                    {post.comments && post.comments.length > 0 ? (
+                      post.comments.map((comment: any) => (
+                        <div key={comment.id} style={{ marginBottom: '0.75rem', fontSize: '0.85rem' }}>
+                          <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{comment.author}: </span>
+                          <span style={{ color: 'var(--foreground)' }}>{comment.content}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No hay comentarios aún.</p>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input 
+                      type="text" 
+                      placeholder="Escribe un comentario..." 
+                      style={{ 
+                        flexGrow: 1, 
+                        background: 'var(--background)', 
+                        border: '1px solid var(--border)', 
+                        borderRadius: '8px', 
+                        padding: '0.5rem 0.75rem',
+                        fontSize: '0.85rem',
+                        color: 'white'
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          // Lógica para enviar comentario
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </article>
           ))
         )}
@@ -644,7 +788,7 @@ export default function Home() {
         <div className="modal-overlay">
           <div className="modal-content">
             <div className="modal-header">
-              <h3>Redactar Nuevo Artículo</h3>
+              <h3>{editingPost ? 'Editar Artículo' : 'Redactar Nuevo Artículo'}</h3>
               <button onClick={() => setShowModal(false)} className="close-btn"><X size={24} /></button>
             </div>
             <form onSubmit={handleSubmitPost}>
@@ -678,7 +822,7 @@ export default function Home() {
                 ></textarea>
               </div>
               <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                <button type="submit" className="btn">Publicar</button>
+                <button type="submit" className="btn">{editingPost ? 'Actualizar' : 'Publicar'}</button>
                 <button type="button" className="btn btn-secondary" onClick={handleBotNews}>
                   Sugerir con IA ✨
                 </button>
@@ -820,6 +964,82 @@ export default function Home() {
           backdrop-filter: blur(4px);
         }
         .modal-content {
+          /* Responsive Design Pro */
+          @media (max-width: 768px) {
+            .header {
+              padding: 1rem;
+              flex-direction: column;
+              gap: 1rem;
+              height: auto;
+            }
+
+            .brand h1 {
+              font-size: 1.25rem;
+            }
+
+            .nav {
+              width: 100%;
+              justify-content: center;
+              gap: 0.75rem;
+            }
+
+            .hero {
+              padding: 3rem 1.5rem;
+              text-align: center;
+            }
+
+            .hero h1 {
+              font-size: 2.25rem;
+            }
+
+            .action-bar {
+              flex-direction: column;
+              align-items: stretch;
+              gap: 1rem;
+            }
+
+            .masonry-grid {
+              grid-template-columns: 1fr;
+            }
+
+            .matches-grid {
+              grid-template-columns: 1fr !important;
+            }
+
+            .modal-content {
+              width: 95% !important;
+              padding: 1.5rem;
+              margin: 1rem;
+            }
+
+            .card-header {
+              flex-direction: column;
+              align-items: flex-start;
+              gap: 0.75rem;
+            }
+
+            .card-tag {
+              align-self: flex-start;
+            }
+          }
+
+          @media (max-width: 480px) {
+            .hero h1 {
+              font-size: 1.75rem;
+            }
+
+            .brand .badge {
+              display: none;
+            }
+
+            .nav-link span {
+              display: none;
+            }
+
+            .action-item span {
+              font-size: 0.75rem;
+            }
+          }
           background: var(--secondary);
           width: 90%;
           max-width: 600px;
@@ -912,71 +1132,70 @@ export default function Home() {
           </div>
         </div>
       )}
-      {/* Modal Gestión de Partidos */}
+      {/* Modal for Matches */}
       {showMatchesModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '800px' }}>
+          <div className="modal-content" style={{ maxWidth: '600px' }}>
             <div className="modal-header">
-              <h3>Gestionar Resultados de la Jornada</h3>
+              <h3>{editingMatch ? 'Editar Partido' : 'Registrar Nuevo Partido'}</h3>
               <button onClick={() => setShowMatchesModal(false)} className="close-btn"><X size={24} /></button>
             </div>
-            <div className="table-editor" style={{ maxHeight: '60vh', overflowY: 'auto', marginBottom: '1rem' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ padding: '0.5rem' }}>Local</th>
-                    <th style={{ padding: '0.5rem' }}>Score</th>
-                    <th style={{ padding: '0.5rem' }}>Visitante</th>
-                    <th style={{ padding: '0.5rem' }}>Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {editMatches.map((m, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #333' }}>
-                      <td style={{ padding: '0.5rem' }}>
-                        <input value={m.home_team} onChange={(e) => {
-                          const newM = [...editMatches];
-                          newM[idx].home_team = e.target.value;
-                          setEditMatches(newM);
-                        }} />
-                      </td>
-                      <td style={{ padding: '0.5rem', display: 'flex', gap: '4px' }}>
-                        <input type="number" style={{ width: '50px' }} value={m.home_score} onChange={(e) => {
-                          const newM = [...editMatches];
-                          newM[idx].home_score = parseInt(e.target.value);
-                          setEditMatches(newM);
-                        }} />
-                        -
-                        <input type="number" style={{ width: '50px' }} value={m.away_score} onChange={(e) => {
-                          const newM = [...editMatches];
-                          newM[idx].away_score = parseInt(e.target.value);
-                          setEditMatches(newM);
-                        }} />
-                      </td>
-                      <td style={{ padding: '0.5rem' }}>
-                        <input value={m.away_team} onChange={(e) => {
-                          const newM = [...editMatches];
-                          newM[idx].away_team = e.target.value;
-                          setEditMatches(newM);
-                        }} />
-                      </td>
-                      <td style={{ padding: '0.5rem' }}>
-                        <button className="close-btn" onClick={() => {
-                          setEditMatches(editMatches.filter((_, i) => i !== idx));
-                        }}><X size={16} /></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <button className="btn btn-secondary" style={{ marginTop: '1rem', width: '100%' }} onClick={addMatchRow}>
-                + Agregar Partido
+            <form onSubmit={handleSubmitMatch}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div className="form-group">
+                  <label>Torneo</label>
+                  <input type="text" value={matchFormData.tournament} onChange={e => setMatchFormData({...matchFormData, tournament: e.target.value})} />
+                </div>
+                <div className="form-group">
+                  <label>Jornada/Ronda</label>
+                  <input type="text" value={matchFormData.round} onChange={e => setMatchFormData({...matchFormData, round: e.target.value})} />
+                </div>
+                <div className="form-group">
+                  <label>Equipo Local</label>
+                  <input type="text" value={matchFormData.home_team} onChange={e => setMatchFormData({...matchFormData, home_team: e.target.value})} />
+                </div>
+                <div className="form-group">
+                  <label>Equipo Visitante</label>
+                  <input type="text" value={matchFormData.away_team} onChange={e => setMatchFormData({...matchFormData, away_team: e.target.value})} />
+                </div>
+                <div className="form-group">
+                  <label>Goles Local</label>
+                  <input type="number" value={matchFormData.home_score} onChange={e => setMatchFormData({...matchFormData, home_score: parseInt(e.target.value)})} />
+                </div>
+                <div className="form-group">
+                  <label>Goles Visitante</label>
+                  <input type="number" value={matchFormData.away_score} onChange={e => setMatchFormData({...matchFormData, away_score: parseInt(e.target.value)})} />
+                </div>
+                <div className="form-group">
+                  <label>Fecha</label>
+                  <input type="date" value={matchFormData.match_date} onChange={e => setMatchFormData({...matchFormData, match_date: e.target.value})} />
+                </div>
+                <div className="form-group">
+                  <label>Hora</label>
+                  <input type="time" value={matchFormData.match_time} onChange={e => setMatchFormData({...matchFormData, match_time: e.target.value})} />
+                </div>
+                <div className="form-group">
+                  <label>Estado</label>
+                  <select value={matchFormData.status} onChange={e => setMatchFormData({...matchFormData, status: e.target.value})}>
+                    <option value="scheduled">Programado</option>
+                    <option value="live">En Vivo</option>
+                    <option value="finished">Finalizado</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-group" style={{ marginTop: '1rem' }}>
+                <label>Comentarios / Reporte del partido</label>
+                <textarea 
+                  rows={3} 
+                  value={matchFormData.comments} 
+                  onChange={e => setMatchFormData({...matchFormData, comments: e.target.value})}
+                  placeholder="Ej: Gol de Luis Díaz al minuto 45..."
+                ></textarea>
+              </div>
+              <button type="submit" className="btn" style={{ width: '100%', marginTop: '1.5rem' }}>
+                {editingMatch ? 'Guardar Cambios' : 'Registrar Partido'}
               </button>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-              <button className="btn btn-secondary" onClick={() => setShowMatchesModal(false)}>Cancelar</button>
-              <button className="btn" onClick={saveMatches}>Guardar Resultados</button>
-            </div>
+            </form>
           </div>
         </div>
       )}

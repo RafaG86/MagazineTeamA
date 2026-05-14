@@ -281,7 +281,8 @@ class SportBotController extends Controller
                         'home_team' => $m['home_team'], 'away_team' => $m['away_team'],
                         'home_score' => $m['home_score'] ?? 0, 'away_score' => $m['away_score'] ?? 0,
                         'status' => $m['status'] ?? 'finished', 'round' => $round,
-                        'match_date' => $m['match_date'] ?? now()->format('Y-m-d')
+                        'match_date' => $m['match_date'] ?? now()->format('Y-m-d'),
+                        'source' => 'ia'
                     ]);
                 }
             }
@@ -353,9 +354,9 @@ class SportBotController extends Controller
                 "{ \"matches\": [ { \"partido\": \"Nombre del Encuentro\", \"local\": \"Equipo A\", \"visitante\": \"Equipo B\", \"goles_local\": 0, \"goles_visitante\": 0, \"estado\": \"finalizado/en curso\", \"minuto\": null } ] }\n" .
                 "Si un dato no está disponible (como el minuto en un partido finalizado), usa null. No inventes.\n\nFuentes:\n" . $combinedText;
 
-            $jsonString = $this->askDeepSeek($prompt, 'deepseek-reasoner');
-            $json = json_decode($jsonString, true);
-            $matches = $json['matches'] ?? [];
+            $parsedArray = $this->askDeepSeek($prompt, 'deepseek-reasoner');
+            $matches = $parsedArray['matches'] ?? [];
+
 
             // Marcar como consolidados
             \App\Models\SportBotExtraction::whereIn('id', $extractions->pluck('id'))->update(['is_consolidated' => true]);
@@ -370,12 +371,14 @@ class SportBotController extends Controller
                         'home_score' => $m['goles_local'] ?? 0, 'away_score' => $m['goles_visitante'] ?? 0,
                         'status' => $m['estado'], 'round' => 'Liga BetPlay',
                         'match_time' => $m['minuto'] ? $m['minuto'] . "'" : null,
-                        'match_date' => now()->format('Y-m-d')
+                        'match_date' => now()->format('Y-m-d'),
+                        'source' => 'ia'
                     ]);
                 }
             }
 
-            return response()->json($matches); // Retornamos directamente el array para cumplir el formato
+            return response()->json(['success' => true, 'matches' => $matches]);
+
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }
