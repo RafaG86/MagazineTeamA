@@ -10,7 +10,8 @@ class SportMatch extends Model
     protected $fillable = [
         'tournament',
         'home_team', 'away_team', 
-        'home_score', 'away_score', 
+        'home_score', 'away_score',
+        'home_penalties', 'away_penalties',
         'home_logo', 'away_logo',
         'match_date', 'match_time', 
         'status', 'round', 'comments', 'source'

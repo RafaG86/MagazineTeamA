@@ -41,9 +41,9 @@ class PostController extends Controller
             'title' => 'sometimes|required|string|max:255',
             'content' => 'sometimes|required|string',
             'section' => 'sometimes|required|string',
-            'author' => 'nullable|string'
         ]);
 
+        // Author is IMMUTABLE — only set on creation, never overwritten
         $post->update($validated);
         return response()->json($post);
     }

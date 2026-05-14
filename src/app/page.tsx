@@ -55,10 +55,22 @@ export default function Home() {
     away_team: '',
     home_score: 0,
     away_score: 0,
+    home_penalties: null,
+    away_penalties: null,
     status: 'scheduled',
     round: '',
     comments: ''
   });
+
+  // Penalty checklist state: true = scored, false = missed, null = not taken
+  const [homePenalties, setHomePenalties] = useState<(boolean | null)[]>(Array(5).fill(null));
+  const [awayPenalties, setAwayPenalties] = useState<(boolean | null)[]>(Array(5).fill(null));
+
+  // Helper: a match is a finished draw
+  const isFinishedDraw = (
+    matchFormData.status === 'finished' &&
+    Number(matchFormData.home_score) === Number(matchFormData.away_score)
+  );
 
   // State for editing standings
   const [editStandings, setEditStandings] = useState<any[]>([]);
@@ -181,7 +193,9 @@ export default function Home() {
           title: formData.title,
           content: editorContent,
           section: sectionToSave,
-          author: username 
+          // On create: set current user as author
+          // On edit: preserve original author (never overwrite)
+          ...(editingPost ? {} : { author: username })
         })
       });
       
@@ -224,12 +238,19 @@ export default function Home() {
       const method = editingMatch ? 'PUT' : 'POST';
       const url = editingMatch ? `/api/matches/${editingMatch.id}` : '/api/matches';
 
-      // Sanitize: don't send empty strings as null will be handled by backend
+      // Calculate penalty totals from checklist when it's a draw
+      const calcPenalties = (kicks: (boolean | null)[]) =>
+        kicks.filter(k => k === true).length;
+
+      const hasPenalties = isFinishedDraw && homePenalties.some(k => k !== null);
+
       const payload = {
         ...matchFormData,
         source: matchFormData.source || 'manual',
         match_time: matchFormData.match_time?.trim() || null,
         match_date: matchFormData.match_date?.trim() || null,
+        home_penalties: hasPenalties ? calcPenalties(homePenalties) : null,
+        away_penalties: hasPenalties ? calcPenalties(awayPenalties) : null,
       };
       
       const res = await fetch(url, {
@@ -241,6 +262,9 @@ export default function Home() {
       if (res.ok) {
         setShowMatchesModal(false);
         setEditingMatch(null);
+        // Reset penalty checklist
+        setHomePenalties(Array(5).fill(null));
+        setAwayPenalties(Array(5).fill(null));
         fetchData();
       } else {
         const err = await res.json();
@@ -250,6 +274,27 @@ export default function Home() {
       console.error('Error saving match:', err);
       alert('Error de conexión al guardar el partido.');
     }
+  };
+
+  // Open match edit modal and restore penalty checklist from saved data
+  const openEditMatch = (m: any) => {
+    setEditingMatch(m);
+    setMatchFormData({...m});
+    // Rebuild penalty checklist from stored totals if available
+    if (m.home_penalties !== null && m.home_penalties !== undefined) {
+      setHomePenalties([
+        ...Array(m.home_penalties).fill(true),
+        ...Array(5 - m.home_penalties).fill(false)
+      ]);
+      setAwayPenalties([
+        ...Array(m.away_penalties).fill(true),
+        ...Array(5 - m.away_penalties).fill(false)
+      ]);
+    } else {
+      setHomePenalties(Array(5).fill(null));
+      setAwayPenalties(Array(5).fill(null));
+    }
+    setShowMatchesModal(true);
   };
 
   const simulateProgress = () => {
@@ -628,6 +673,35 @@ export default function Home() {
                     <span className="team-name" style={{ fontSize: '1.1rem' }}>{m.away_team}</span>
                     <span className="team-score" style={{ background: 'var(--accent)', color: '#000' }}>{m.away_score}</span>
                   </div>
+                  {/* Penalty result badge — shown only when draw had a shootout */}
+                  {m.status === 'finished' &&
+                   Number(m.home_score) === Number(m.away_score) &&
+                   m.home_penalties !== null && m.away_penalties !== null && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      padding: '0.6rem 1rem',
+                      background: 'rgba(251,191,36,0.08)',
+                      border: '1px solid rgba(251,191,36,0.25)',
+                      borderRadius: '10px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
+                        ⚽ Penales
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', fontSize: '1.1rem', fontWeight: 800 }}>
+                        <span style={{ color: Number(m.home_penalties) > Number(m.away_penalties) ? '#fbbf24' : 'var(--text-muted)' }}>
+                          {m.home_penalties}
+                        </span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>–</span>
+                        <span style={{ color: Number(m.away_penalties) > Number(m.home_penalties) ? '#fbbf24' : 'var(--text-muted)' }}>
+                          {m.away_penalties}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#fbbf24', marginTop: '0.3rem', fontWeight: 600 }}>
+                        Avanza: {Number(m.home_penalties) > Number(m.away_penalties) ? m.home_team : m.away_team}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {m.comments && (
@@ -646,7 +720,7 @@ export default function Home() {
                     paddingTop: '1rem' 
                   }}>
                     <button 
-                      onClick={() => { setEditingMatch(m); setMatchFormData({...m}); setShowMatchesModal(true); }}
+                      onClick={() => openEditMatch(m)}
                       style={{ 
                         background: 'rgba(59, 130, 246, 0.1)', 
                         color: '#60a5fa',
@@ -1256,7 +1330,7 @@ export default function Home() {
           <div className="modal-content" style={{ maxWidth: '600px' }}>
             <div className="modal-header">
               <h3>{editingMatch ? 'Editar Partido' : 'Registrar Nuevo Partido'}</h3>
-              <button onClick={() => setShowMatchesModal(false)} className="close-btn"><X size={24} /></button>
+              <button onClick={() => { setShowMatchesModal(false); setHomePenalties(Array(5).fill(null)); setAwayPenalties(Array(5).fill(null)); }} className="close-btn"><X size={24} /></button>
             </div>
             <form onSubmit={handleSubmitMatch}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -1278,11 +1352,11 @@ export default function Home() {
                 </div>
                 <div className="form-group">
                   <label>Goles Local</label>
-                  <input type="number" value={matchFormData.home_score} onChange={e => setMatchFormData({...matchFormData, home_score: parseInt(e.target.value)})} />
+                  <input type="number" min="0" value={matchFormData.home_score} onChange={e => setMatchFormData({...matchFormData, home_score: parseInt(e.target.value)})} />
                 </div>
                 <div className="form-group">
                   <label>Goles Visitante</label>
-                  <input type="number" value={matchFormData.away_score} onChange={e => setMatchFormData({...matchFormData, away_score: parseInt(e.target.value)})} />
+                  <input type="number" min="0" value={matchFormData.away_score} onChange={e => setMatchFormData({...matchFormData, away_score: parseInt(e.target.value)})} />
                 </div>
                 <div className="form-group">
                   <label>Fecha</label>
@@ -1301,6 +1375,128 @@ export default function Home() {
                   </select>
                 </div>
               </div>
+
+              {/* ── PENALTY SHOOTOUT SECTION ── Only visible when it's a finished draw */}
+              {isFinishedDraw && (
+                <div style={{
+                  marginTop: '1.5rem',
+                  padding: '1.25rem',
+                  background: 'rgba(251,191,36,0.06)',
+                  border: '1px solid rgba(251,191,36,0.3)',
+                  borderRadius: '12px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                    <span style={{ fontSize: '1.2rem' }}>⚽</span>
+                    <span style={{ fontWeight: 800, color: '#fbbf24', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Tanda de Penales
+                    </span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                      Clic en cada penal: ✅ Gol · ❌ Fallo · ⬜ Sin lanzar
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    {/* Home team penalties */}
+                    <div>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem', textAlign: 'center' }}>
+                        {matchFormData.home_team || 'Local'}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                        {homePenalties.map((kick, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            title={kick === null ? 'Sin lanzar' : kick ? 'Gol' : 'Fallo'}
+                            onClick={() => {
+                              const next = [...homePenalties];
+                              next[i] = kick === null ? true : kick === true ? false : null;
+                              setHomePenalties(next);
+                            }}
+                            style={{
+                              width: '38px', height: '38px',
+                              borderRadius: '8px',
+                              border: '2px solid',
+                              borderColor: kick === null ? 'rgba(255,255,255,0.15)' : kick ? '#10b981' : '#ef4444',
+                              background: kick === null ? 'rgba(255,255,255,0.04)' : kick ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                              cursor: 'pointer',
+                              fontSize: '1.1rem',
+                              transition: 'all 0.15s',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}
+                          >
+                            {kick === null ? <span style={{ opacity: 0.3 }}>○</span> : kick ? '✅' : '❌'}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ textAlign: 'center', marginTop: '0.5rem', fontSize: '1.4rem', fontWeight: 900, color: '#10b981' }}>
+                        {homePenalties.filter(k => k === true).length}
+                      </div>
+                    </div>
+
+                    {/* Away team penalties */}
+                    <div>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem', textAlign: 'center' }}>
+                        {matchFormData.away_team || 'Visitante'}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                        {awayPenalties.map((kick, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            title={kick === null ? 'Sin lanzar' : kick ? 'Gol' : 'Fallo'}
+                            onClick={() => {
+                              const next = [...awayPenalties];
+                              next[i] = kick === null ? true : kick === true ? false : null;
+                              setAwayPenalties(next);
+                            }}
+                            style={{
+                              width: '38px', height: '38px',
+                              borderRadius: '8px',
+                              border: '2px solid',
+                              borderColor: kick === null ? 'rgba(255,255,255,0.15)' : kick ? '#10b981' : '#ef4444',
+                              background: kick === null ? 'rgba(255,255,255,0.04)' : kick ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                              cursor: 'pointer',
+                              fontSize: '1.1rem',
+                              transition: 'all 0.15s',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}
+                          >
+                            {kick === null ? <span style={{ opacity: 0.3 }}>○</span> : kick ? '✅' : '❌'}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ textAlign: 'center', marginTop: '0.5rem', fontSize: '1.4rem', fontWeight: 900, color: '#10b981' }}>
+                        {awayPenalties.filter(k => k === true).length}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Winner announcement */}
+                  {homePenalties.some(k => k !== null) && awayPenalties.some(k => k !== null) && (
+                    (() => {
+                      const hG = homePenalties.filter(k => k === true).length;
+                      const aG = awayPenalties.filter(k => k === true).length;
+                      if (hG === aG) return null;
+                      const winner = hG > aG ? (matchFormData.home_team || 'Local') : (matchFormData.away_team || 'Visitante');
+                      return (
+                        <div style={{
+                          marginTop: '1rem',
+                          padding: '0.6rem 1rem',
+                          background: 'rgba(251,191,36,0.12)',
+                          borderRadius: '8px',
+                          textAlign: 'center',
+                          fontWeight: 700,
+                          color: '#fbbf24',
+                          fontSize: '0.85rem'
+                        }}>
+                          🏆 Avanza: <strong>{winner}</strong>
+                        </div>
+                      );
+                    })()
+                  )}
+                </div>
+              )}
+
               <div className="form-group" style={{ marginTop: '1rem' }}>
                 <label>Comentarios / Reporte del partido</label>
                 <textarea 
