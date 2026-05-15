@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Post;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class PostController extends Controller
 {
@@ -24,6 +25,7 @@ class PostController extends Controller
     {
         $validated = $request->validate([
             'title' => 'required|string|max:255',
+            'image_url' => 'nullable|string',
             'content' => 'required|string',
             'section' => 'required|string',
             'author' => 'nullable|string'
@@ -39,6 +41,7 @@ class PostController extends Controller
         
         $validated = $request->validate([
             'title' => 'sometimes|required|string|max:255',
+            'image_url' => 'sometimes|nullable|string',
             'content' => 'sometimes|required|string',
             'section' => 'sometimes|required|string',
         ]);
@@ -53,5 +56,22 @@ class PostController extends Controller
         $post = Post::findOrFail($id);
         $post->delete();
         return response()->json(['message' => 'Post eliminado correctamente']);
+    }
+
+    public function uploadImage(Request $request)
+    {
+        $request->validate([
+            'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120'
+        ]);
+
+        $file = $request->file('image');
+        $path = $file->store('posts', 'public');
+
+        // Always return a root-relative URL so it works with any APP_URL (local, tunnel, etc.)
+        $relativeUrl = '/storage/' . $path;
+
+        return response()->json([
+            'image_url' => $relativeUrl
+        ]);
     }
 }

@@ -40,14 +40,18 @@ export default function Home() {
   
   const router = useRouter();
   const editorRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   
   // Form state for posts
   const [formData, setFormData] = useState({
     section: SECTIONS[0],
     customSection: '',
     title: '',
-    content: ''
+    content: '',
+    imageUrl: ''
   });
+  const [imagePreview, setImagePreview] = useState<string>('');
+  const [imageUploading, setImageUploading] = useState(false);
 
   const [matchFormData, setMatchFormData] = useState<any>({
     tournament: 'Liga BetPlay',
@@ -191,6 +195,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           title: formData.title,
+          image_url: formData.imageUrl || null,
           content: editorContent,
           section: sectionToSave,
           // On create: set current user as author
@@ -202,7 +207,8 @@ export default function Home() {
       if (res.ok) {
         setShowModal(false);
         setEditingPost(null);
-        setFormData({ section: SECTIONS[0], customSection: '', title: '', content: '' });
+        setFormData({ section: SECTIONS[0], customSection: '', title: '', content: '', imageUrl: '' });
+        setImagePreview('');
         fetchData();
       }
     } catch (err) {
@@ -227,8 +233,10 @@ export default function Home() {
       section: isCustom ? 'Personalizada' : post.section, 
       customSection: isCustom ? post.section : '',
       title: post.title, 
-      content: post.content 
+      content: post.content,
+      imageUrl: post.image_url || ''
     });
+    setImagePreview(post.image_url || '');
     setShowModal(true);
   };
 
@@ -468,6 +476,54 @@ export default function Home() {
     reader.readAsDataURL(file);
   };
 
+  const handleArticleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('La imagen no debe superar los 5MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    setImageUploading(true);
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+      const res = await fetch('/api/posts/upload-image', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok && data.image_url) {
+        setFormData(prev => ({ ...prev, imageUrl: data.image_url }));
+      } else {
+        alert('Error al subir la imagen: ' + (data.error || data.message || 'Intenta de nuevo.'));
+        setImagePreview('');
+      }
+    } catch (err) {
+      console.error('Error uploading image:', err);
+      alert('Error de conexión al subir la imagen.');
+      setImagePreview('');
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
+  const handleClearImage = () => {
+    setFormData(prev => ({ ...prev, imageUrl: '' }));
+    setImagePreview('');
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
+    }
+  };
+
 
   if (!authorized || loading) {
     return null;
@@ -508,7 +564,7 @@ export default function Home() {
                 <Trophy size={18} style={{ marginRight: '6px' }} />
                 Nuevo Partido
               </button>
-              <button className="btn" onClick={() => { setEditingPost(null); setFormData({ section: SECTIONS[0], title: '', content: '' }); setShowModal(true); }}>
+              <button className="btn" onClick={() => { setEditingPost(null); setFormData({ section: SECTIONS[0], customSection: '', title: '', content: '', imageUrl: '' }); setImagePreview(''); setShowModal(true); }}>
                 <Plus size={18} style={{ marginRight: '6px' }} />
                 Nuevo Artículo
               </button>
@@ -816,6 +872,16 @@ export default function Home() {
                 </div>
               </div>
 
+              {post.image_url && (
+                <div className="article-image">
+                  <img
+                    src={post.image_url.startsWith('/') ? `http://localhost:3001${post.image_url}` : post.image_url}
+                    alt={post.title}
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                </div>
+              )}
+
               <div className="card-content" style={{ paddingTop: '0.5rem' }}>
                 <h2 className="card-title" style={{ fontSize: '1.4rem', fontWeight: '800' }}>{post.title}</h2>
                 
@@ -976,6 +1042,68 @@ export default function Home() {
                 />
               </div>
               <div className="form-group">
+                <label>Imagen del Artículo (opcional)</label>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: '200px' }}>
+                    <input 
+                      type="text"
+                      placeholder="URL de imagen externa..."
+                      value={formData.imageUrl.startsWith('http') ? formData.imageUrl : ''}
+                      onChange={e => {
+                        setFormData({ ...formData, imageUrl: e.target.value });
+                        setImagePreview(e.target.value);
+                      }}
+                      style={{ marginBottom: '0.5rem' }}
+                    />
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <input 
+                        ref={imageInputRef}
+                        type="file" 
+                        accept=".jpg,.jpeg,.png,.gif,.webp" 
+                        onChange={handleArticleImageUpload} 
+                        style={{ display: 'none' }} 
+                        id="article-image-upload" 
+                      />
+                      <button 
+                        type="button"
+                        className="btn btn-secondary" 
+                        onClick={() => document.getElementById('article-image-upload')?.click()}
+                        disabled={imageUploading}
+                        style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+                      >
+                        {imageUploading ? 'Subiendo...' : 'Subir archivo'}
+                      </button>
+                      {(formData.imageUrl || imagePreview) && (
+                        <button 
+                          type="button"
+                          className="btn btn-secondary" 
+                          onClick={handleClearImage}
+                          style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', color: 'var(--danger)' }}
+                        >
+                          Quitar imagen
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {(formData.imageUrl || imagePreview) && (
+                    <div style={{ 
+                      width: '120px', 
+                      height: '80px', 
+                      borderRadius: '8px', 
+                      overflow: 'hidden', 
+                      border: '1px solid var(--border)',
+                      flexShrink: 0
+                    }}>
+                      <img 
+                        src={imagePreview || formData.imageUrl} 
+                        alt="Preview" 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="form-group">
                 <label>Contenido</label>
                 <div className="rte-toolbar">
                   <button type="button" title="Negrita" onMouseDown={e => { e.preventDefault(); document.execCommand('bold'); }}><Bold size={16} /></button>
@@ -1115,7 +1243,7 @@ export default function Home() {
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <input 
                   type="file" 
-                  accept="image/*" 
+                  accept=".jpg,.jpeg,.png,.gif,.webp" 
                   onChange={handleImageUpload} 
                   style={{ display: 'none' }} 
                   id="image-upload" 
@@ -1277,6 +1405,19 @@ export default function Home() {
         .table-editor input:focus {
           border-bottom: 1px solid var(--primary) !important;
           outline: none;
+        }
+        .article-image {
+          width: 100%;
+          max-height: 300px;
+          overflow: hidden;
+          border-radius: 12px;
+          margin-bottom: 1rem;
+        }
+        .article-image img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
         }
       `}</style>
       {/* Debug Modal */}

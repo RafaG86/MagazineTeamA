@@ -11,6 +11,7 @@ Route::get('/posts', [PostController::class, 'index']);
 Route::post('/posts', [PostController::class, 'store']);
 Route::put('/posts/{id}', [PostController::class, 'update']);
 Route::delete('/posts/{id}', [PostController::class, 'destroy']);
+Route::post('/posts/upload-image', [PostController::class, 'uploadImage']);
 
 Route::get('/standings', [StandingsController::class, 'index']);
 Route::post('/standings', [StandingsController::class, 'store']);
