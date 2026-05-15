@@ -176,6 +176,10 @@ export default function Home() {
 
   const handleSubmitPost = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (imageUploading) {
+      alert('Espera a que la imagen termine de subirse antes de guardar.');
+      return;
+    }
     try {
       const username = localStorage.getItem('username');
       const method = editingPost ? 'PUT' : 'POST';
@@ -480,37 +484,54 @@ export default function Home() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('Formato no soportado. Usa JPG, PNG, GIF o WEBP.');
+      return;
+    }
+
     if (file.size > 5 * 1024 * 1024) {
       alert('La imagen no debe superar los 5MB.');
       return;
     }
 
+    // Immediate local preview via base64 — does NOT go to server yet
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result as string);
-    };
+    reader.onloadend = () => setImagePreview(reader.result as string);
     reader.readAsDataURL(file);
 
     setImageUploading(true);
-    const formData = new FormData();
-    formData.append('image', file);
+
+    // Upload DIRECTLY to Laravel — bypasses Next.js proxy to avoid stream truncation bug
+    const uploadForm = new FormData();
+    uploadForm.append('image', file, file.name);
 
     try {
-      const res = await fetch('/api/posts/upload-image', {
+      const res = await fetch('http://localhost:3001/api/posts/upload-image', {
         method: 'POST',
-        body: formData
+        body: uploadForm
+        // Do NOT set Content-Type — browser sets correct multipart boundary automatically
       });
-      const data = await res.json();
-      if (res.ok && data.image_url) {
-        setFormData(prev => ({ ...prev, imageUrl: data.image_url }));
-      } else {
-        alert('Error al subir la imagen: ' + (data.error || data.message || 'Intenta de nuevo.'));
-        setImagePreview('');
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || `HTTP ${res.status}`);
       }
-    } catch (err) {
-      console.error('Error uploading image:', err);
-      alert('Error de conexión al subir la imagen.');
+
+      const data = await res.json();
+      if (!data.image_url) throw new Error('El servidor no devolvió una URL de imagen.');
+
+      // Build absolute URL so the <img> tag always works regardless of APP_URL
+      const absoluteUrl = data.image_url.startsWith('/')
+        ? `http://localhost:3001${data.image_url}`
+        : data.image_url;
+
+      setFormData(prev => ({ ...prev, imageUrl: absoluteUrl }));
+    } catch (err: any) {
+      console.error('Image upload error:', err);
+      alert('Error al subir la imagen: ' + err.message);
       setImagePreview('');
+      setFormData(prev => ({ ...prev, imageUrl: '' }));
     } finally {
       setImageUploading(false);
     }
