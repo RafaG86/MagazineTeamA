@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const LARAVEL_API = 'http://localhost:8000/api/bot';
+const LARAVEL_API = 'http://localhost:3001/api/bot';
 
 export async function GET(
   request: Request,

@@ -64,13 +64,24 @@ class PostController extends Controller
         if ($request->has('image_base64')) {
             $dataUrl = $request->input('image_base64');
 
-            // Parse  "data:image/jpeg;base64,/9j/4AAQ..."
-            if (!preg_match('/^data:(image\/(?:jpeg|png|gif|webp));base64,(.+)$/i', $dataUrl, $m)) {
-                return response()->json(['error' => 'Formato de imagen no válido.'], 422);
+            // Parse "data:image/jpeg;base64,/9j/4AAQ..." safely without regex (avoids PCRE memory limits on 5MB strings)
+            if (!str_starts_with($dataUrl, 'data:image/')) {
+                return response()->json(['error' => 'Formato no válido (debe empezar con data:image/).'], 422);
             }
 
-            $mimeType  = $m[1];                        // e.g. "image/jpeg"
-            $decoded   = base64_decode($m[2]);
+            $parts = explode(';base64,', $dataUrl);
+            if (count($parts) !== 2) {
+                return response()->json(['error' => 'La imagen no está codificada en base64 correctamente.'], 422);
+            }
+
+            $mimeType = str_replace('data:', '', $parts[0]); // e.g. "image/jpeg"
+            $allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
+            if (!in_array($mimeType, $allowedMimes)) {
+                return response()->json(['error' => 'Formato no permitido. Usa JPG, PNG, GIF o WEBP.'], 422);
+            }
+
+            $decoded = base64_decode($parts[1]);
 
             if ($decoded === false || strlen($decoded) < 10) {
                 return response()->json(['error' => 'No se pudo decodificar la imagen.'], 422);
