@@ -80,6 +80,7 @@ export default function Home() {
   // State for editing standings
   const [editStandings, setEditStandings] = useState<any[]>([]);
   const [teamsList, setTeamsList] = useState<any[]>([]);
+  const [logoErrors, setLogoErrors] = useState<Record<string, boolean>>({});
 
   const getTeamLogo = (teamName: string) => {
     if (!teamName) return '';
@@ -766,8 +767,16 @@ export default function Home() {
                 <div className="match-teams" style={{ padding: '0.5rem 0' }}>
                   <div className="team-row">
                     <span className="team-name" style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {getTeamLogo(m.home_team) ? (
-                        <img src={getTeamLogo(m.home_team)} alt="" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
+                      {getTeamLogo(m.home_team) && !logoErrors[m.home_team] ? (
+                        <img 
+                          src={getTeamLogo(m.home_team)} 
+                          alt="" 
+                          referrerPolicy="no-referrer"
+                          style={{ width: '30px', height: '30px', objectFit: 'contain' }} 
+                          onError={() => {
+                            setLogoErrors(prev => ({ ...prev, [m.home_team]: true }));
+                          }}
+                        />
                       ) : (
                         <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem' }}>⚽</div>
                       )}
@@ -778,8 +787,16 @@ export default function Home() {
                   <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', margin: '-4px 0' }}>VS</div>
                   <div className="team-row">
                     <span className="team-name" style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {getTeamLogo(m.away_team) ? (
-                        <img src={getTeamLogo(m.away_team)} alt="" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
+                      {getTeamLogo(m.away_team) && !logoErrors[m.away_team] ? (
+                        <img 
+                          src={getTeamLogo(m.away_team)} 
+                          alt="" 
+                          referrerPolicy="no-referrer"
+                          style={{ width: '30px', height: '30px', objectFit: 'contain' }} 
+                          onError={() => {
+                            setLogoErrors(prev => ({ ...prev, [m.away_team]: true }));
+                          }}
+                        />
                       ) : (
                         <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem' }}>⚽</div>
                       )}
