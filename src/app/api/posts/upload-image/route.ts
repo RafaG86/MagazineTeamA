@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const LARAVEL_API = 'http://localhost:3001/api';
+const LARAVEL_API = 'http://127.0.0.1:3001/api';
 
 /**
  * Receives: JSON { image_base64: "data:image/jpeg;base64,..." }
@@ -53,11 +53,7 @@ export async function POST(request: Request) {
       return NextResponse.json(data, { status: res.status });
     }
 
-    // Convert relative path (/storage/...) to absolute URL using internal Laravel address
-    if (data.image_url && data.image_url.startsWith('/')) {
-      data.image_url = 'http://localhost:3001' + data.image_url;
-    }
-
+    // Keep relative path (/storage/...) so Next.js rewrites can proxy it over LocalToNet or Localhost
     console.log('Upload proxy success, returning URL:', data.image_url);
     return NextResponse.json(data);
   } catch (error: any) {

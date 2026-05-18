@@ -14,8 +14,8 @@ const admins = [
 db.serialize(() => {
   admins.forEach((admin) => {
     db.run(
-      'INSERT OR REPLACE INTO users (username, password, role) VALUES (?, ?, ?)',
-      [admin.username, admin.password, admin.role],
+      'INSERT OR REPLACE INTO users (username, password, role, name, email) VALUES (?, ?, ?, ?, ?)',
+      [admin.username, admin.password, admin.role, admin.username, admin.username.toLowerCase() + '@magazine.com'],
       function(err) {
         if (err) {
           console.error(`Error creando a ${admin.username}:`, err.message);

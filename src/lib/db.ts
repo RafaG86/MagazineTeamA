@@ -91,5 +91,16 @@ export async function openDb() {
     );
   `);
 
+  // Ensure table and columns are compatible if created by Laravel
+  const columns = await dbInstance.all("PRAGMA table_info(users)");
+  const hasUsername = columns.some((col: any) => col.name === 'username');
+  if (!hasUsername) {
+    await dbInstance.exec("ALTER TABLE users ADD COLUMN username TEXT");
+  }
+  const hasRole = columns.some((col: any) => col.name === 'role');
+  if (!hasRole) {
+    await dbInstance.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'");
+  }
+
   return dbInstance;
 }

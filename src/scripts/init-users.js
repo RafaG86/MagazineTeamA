@@ -5,16 +5,16 @@ const dbPath = path.join(__dirname, '../../magazine.db');
 const db = new sqlite3.Database(dbPath);
 
 db.serialize(() => {
-  const stmt = db.prepare('INSERT OR REPLACE INTO users (username, password, role) VALUES (?, ?, ?)');
+  const stmt = db.prepare('INSERT OR REPLACE INTO users (username, password, role, name, email) VALUES (?, ?, ?, ?, ?)');
   
   // Usuarios existentes (los mantenemos)
-  stmt.run('admin', 'admin-password', 'admin');
-  stmt.run('invitado', 'invitado123', 'user');
+  stmt.run('admin', 'admin-password', 'admin', 'admin', 'admin@magazine.com');
+  stmt.run('invitado', 'invitado123', 'user', 'invitado', 'invitado@magazine.com');
   
   // Nuevos usuarios solicitados
-  stmt.run('locutor1', 'team-a-2026', 'user');
-  stmt.run('periodista1', 'noticias-encasa', 'user');
-  stmt.run('oyente-premium', 'radio-premium', 'user');
+  stmt.run('locutor1', 'team-a-2026', 'user', 'locutor1', 'locutor1@magazine.com');
+  stmt.run('periodista1', 'noticias-encasa', 'user', 'periodista1', 'periodista1@magazine.com');
+  stmt.run('oyente-premium', 'radio-premium', 'user', 'oyente-premium', 'oyente-premium@magazine.com');
   
   stmt.finalize();
   

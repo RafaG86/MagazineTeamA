@@ -10,6 +10,15 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ['lks2p0vbr.localto.net'],
   
   serverExternalPackages: ['puppeteer'],
+
+  async rewrites() {
+    return [
+      {
+        source: '/storage/:path*',
+        destination: 'http://127.0.0.1:3001/storage/:path*', // Proxy to Laravel
+      },
+    ];
+  },
 };
 
 export default nextConfig;

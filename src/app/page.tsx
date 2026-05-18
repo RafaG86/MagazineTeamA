@@ -69,6 +69,7 @@ export default function Home() {
   // Penalty checklist state: true = scored, false = missed, null = not taken
   const [homePenalties, setHomePenalties] = useState<(boolean | null)[]>(Array(5).fill(null));
   const [awayPenalties, setAwayPenalties] = useState<(boolean | null)[]>(Array(5).fill(null));
+  const [hasPenaltyShootout, setHasPenaltyShootout] = useState(false);
 
   // Helper: a match is a finished draw
   const isFinishedDraw = (
@@ -254,7 +255,7 @@ export default function Home() {
       const calcPenalties = (kicks: (boolean | null)[]) =>
         kicks.filter(k => k === true).length;
 
-      const hasPenalties = isFinishedDraw && homePenalties.some(k => k !== null);
+      const hasPenalties = isFinishedDraw && hasPenaltyShootout;
 
       const payload = {
         ...matchFormData,
@@ -294,6 +295,7 @@ export default function Home() {
     setMatchFormData({...m});
     // Rebuild penalty checklist from stored totals if available
     if (m.home_penalties !== null && m.home_penalties !== undefined) {
+      setHasPenaltyShootout(true);
       setHomePenalties([
         ...Array(m.home_penalties).fill(true),
         ...Array(5 - m.home_penalties).fill(false)
@@ -303,6 +305,7 @@ export default function Home() {
         ...Array(5 - m.away_penalties).fill(false)
       ]);
     } else {
+      setHasPenaltyShootout(false);
       setHomePenalties(Array(5).fill(null));
       setAwayPenalties(Array(5).fill(null));
     }
@@ -480,10 +483,7 @@ export default function Home() {
     reader.readAsDataURL(file);
   };
 
-  const handleArticleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processAndUploadImage = async (file: File) => {
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
       alert('Formato no soportado. Usa JPG, PNG, GIF o WEBP.');
@@ -496,7 +496,6 @@ export default function Home() {
 
     setImageUploading(true);
 
-    // Convert to base64 data URL — works on any origin (no Mixed Content, no multipart truncation)
     const toBase64 = (f: File): Promise<string> =>
       new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -509,7 +508,6 @@ export default function Home() {
       const base64 = await toBase64(file);
       setImagePreview(base64); // instant local preview
 
-      // POST base64 JSON through the Next.js proxy (same-origin → no CORS / Mixed Content)
       const res = await fetch('/api/posts/upload-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -532,6 +530,20 @@ export default function Home() {
       setFormData(prev => ({ ...prev, imageUrl: '' }));
     } finally {
       setImageUploading(false);
+    }
+  };
+
+  const handleArticlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const file = item.getAsFile();
+        if (file) await processAndUploadImage(file);
+        return;
+      }
     }
   };
 
@@ -894,7 +906,7 @@ export default function Home() {
               {post.image_url && (
                 <div className="article-image">
                   <img
-                    src={post.image_url.startsWith('/') ? `http://localhost:3001${post.image_url}` : post.image_url}
+                    src={post.image_url}
                     alt={post.title}
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                   />
@@ -1064,45 +1076,45 @@ export default function Home() {
                 <label>Imagen del Artículo (opcional)</label>
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: '200px' }}>
-                    <input 
-                      type="text"
-                      placeholder="URL de imagen externa..."
-                      value={formData.imageUrl.startsWith('http') ? formData.imageUrl : ''}
-                      onChange={e => {
-                        setFormData({ ...formData, imageUrl: e.target.value });
-                        setImagePreview(e.target.value);
+                    <div 
+                      tabIndex={0}
+                      onPaste={handleArticlePaste}
+                      style={{
+                        border: '2px dashed var(--border)',
+                        borderRadius: '8px',
+                        padding: '1.5rem',
+                        textAlign: 'center',
+                        cursor: 'text',
+                        background: 'rgba(0,0,0,0.02)',
+                        transition: 'all 0.2s ease',
+                        outline: 'none',
                       }}
-                      style={{ marginBottom: '0.5rem' }}
-                    />
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <input 
-                        ref={imageInputRef}
-                        type="file" 
-                        accept=".jpg,.jpeg,.png,.gif,.webp" 
-                        onChange={handleArticleImageUpload} 
-                        style={{ display: 'none' }} 
-                        id="article-image-upload" 
-                      />
+                      onFocus={e => e.target.style.borderColor = 'var(--primary)'}
+                      onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                    >
+                      {imageUploading ? (
+                        <span style={{ color: 'var(--text-muted)' }}>Procesando imagen...</span>
+                      ) : (
+                        <div>
+                          <span style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.25rem' }}>
+                            Haz clic aquí y presiona Ctrl+V
+                          </span>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                            Pega la imagen de portada directamente desde tu portapapeles.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {(formData.imageUrl || imagePreview) && (
                       <button 
                         type="button"
                         className="btn btn-secondary" 
-                        onClick={() => document.getElementById('article-image-upload')?.click()}
-                        disabled={imageUploading}
-                        style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+                        onClick={handleClearImage}
+                        style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', color: 'var(--danger)', marginTop: '0.75rem' }}
                       >
-                        {imageUploading ? 'Subiendo...' : 'Subir archivo'}
+                        Quitar imagen
                       </button>
-                      {(formData.imageUrl || imagePreview) && (
-                        <button 
-                          type="button"
-                          className="btn btn-secondary" 
-                          onClick={handleClearImage}
-                          style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', color: 'var(--danger)' }}
-                        >
-                          Quitar imagen
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </div>
                   {(formData.imageUrl || imagePreview) && (
                     <div style={{ 
@@ -1545,17 +1557,34 @@ export default function Home() {
                   border: '1px solid rgba(251,191,36,0.3)',
                   borderRadius: '12px',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                    <span style={{ fontSize: '1.2rem' }}>⚽</span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: hasPenaltyShootout ? '1rem' : '0' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={hasPenaltyShootout}
+                      onChange={e => {
+                        setHasPenaltyShootout(e.target.checked);
+                        if (!e.target.checked) {
+                          setHomePenalties(Array(5).fill(null));
+                          setAwayPenalties(Array(5).fill(null));
+                        }
+                      }}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#fbbf24' }}
+                    />
                     <span style={{ fontWeight: 800, color: '#fbbf24', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                      Tanda de Penales
+                      ¿Hubo cobros desde el punto penal?
                     </span>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                      Clic en cada penal: ✅ Gol · ❌ Fallo · ⬜ Sin lanzar
-                    </span>
-                  </div>
+                  </label>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  {hasPenaltyShootout && (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                        <span style={{ fontSize: '1.2rem' }}>⚽</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                          Clic en cada penal: ✅ Gol · ❌ Fallo · ⬜ Sin lanzar
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                     {/* Home team penalties */}
                     <div>
                       <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem', textAlign: 'center' }}>
@@ -1653,6 +1682,8 @@ export default function Home() {
                         </div>
                       );
                     })()
+                  )}
+                    </>
                   )}
                 </div>
               )}
