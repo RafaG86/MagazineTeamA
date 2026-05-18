@@ -1568,11 +1568,33 @@ export default function Home() {
                 </datalist>
                 <div className="form-group">
                   <label>Goles Local</label>
-                  <input type="number" min="0" value={matchFormData.home_score} onChange={e => setMatchFormData({...matchFormData, home_score: parseInt(e.target.value)})} />
+                  <input 
+                    type="number" 
+                    min="0" 
+                    value={matchFormData.home_score === null || matchFormData.home_score === undefined || isNaN(matchFormData.home_score) ? '' : matchFormData.home_score} 
+                    onChange={e => {
+                      const val = e.target.value;
+                      setMatchFormData({
+                        ...matchFormData, 
+                        home_score: val === '' ? '' : (parseInt(val, 10) || 0)
+                      });
+                    }} 
+                  />
                 </div>
                 <div className="form-group">
                   <label>Goles Visitante</label>
-                  <input type="number" min="0" value={matchFormData.away_score} onChange={e => setMatchFormData({...matchFormData, away_score: parseInt(e.target.value)})} />
+                  <input 
+                    type="number" 
+                    min="0" 
+                    value={matchFormData.away_score === null || matchFormData.away_score === undefined || isNaN(matchFormData.away_score) ? '' : matchFormData.away_score} 
+                    onChange={e => {
+                      const val = e.target.value;
+                      setMatchFormData({
+                        ...matchFormData, 
+                        away_score: val === '' ? '' : (parseInt(val, 10) || 0)
+                      });
+                    }} 
+                  />
                 </div>
                 <div className="form-group">
                   <label>Fecha</label>
