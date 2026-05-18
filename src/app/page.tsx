@@ -79,18 +79,27 @@ export default function Home() {
 
   // State for editing standings
   const [editStandings, setEditStandings] = useState<any[]>([]);
+  const [teamsList, setTeamsList] = useState<any[]>([]);
+
+  const getTeamLogo = (teamName: string) => {
+    if (!teamName) return '';
+    const found = teamsList.find(t => t.name.toLowerCase() === teamName.trim().toLowerCase());
+    return found ? found.logo_url : '';
+  };
 
   const fetchData = async () => {
     try {
-      const [postsRes, standingsRes, matchesRes] = await Promise.all([
+      const [postsRes, standingsRes, matchesRes, teamsRes] = await Promise.all([
         fetch('/api/posts'),
         fetch('/api/standings'),
-        fetch('/api/matches')
+        fetch('/api/matches'),
+        fetch('/api/teams')
       ]);
       
       const postsData = await postsRes.json();
       const standingsData = await standingsRes.json();
       const matchesData = await matchesRes.json();
+      const teamsData = await teamsRes.json().catch(() => []);
       
       if (postsData.posts) {
         setPosts(postsData.posts);
@@ -104,6 +113,10 @@ export default function Home() {
 
       if (matchesData.matches) {
         setMatches(matchesData.matches);
+      }
+
+      if (Array.isArray(teamsData)) {
+        setTeamsList(teamsData);
       }
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -752,12 +765,26 @@ export default function Home() {
 
                 <div className="match-teams" style={{ padding: '0.5rem 0' }}>
                   <div className="team-row">
-                    <span className="team-name" style={{ fontSize: '1.1rem' }}>{m.home_team}</span>
+                    <span className="team-name" style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {getTeamLogo(m.home_team) ? (
+                        <img src={getTeamLogo(m.home_team)} alt="" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
+                      ) : (
+                        <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem' }}>⚽</div>
+                      )}
+                      {m.home_team}
+                    </span>
                     <span className="team-score" style={{ background: 'var(--accent)', color: '#000' }}>{m.home_score}</span>
                   </div>
                   <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', margin: '-4px 0' }}>VS</div>
                   <div className="team-row">
-                    <span className="team-name" style={{ fontSize: '1.1rem' }}>{m.away_team}</span>
+                    <span className="team-name" style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {getTeamLogo(m.away_team) ? (
+                        <img src={getTeamLogo(m.away_team)} alt="" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
+                      ) : (
+                        <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem' }}>⚽</div>
+                      )}
+                      {m.away_team}
+                    </span>
                     <span className="team-score" style={{ background: 'var(--accent)', color: '#000' }}>{m.away_score}</span>
                   </div>
                   {/* Penalty result badge — shown only when draw had a shootout */}
@@ -1516,12 +1543,29 @@ export default function Home() {
                 </div>
                 <div className="form-group">
                   <label>Equipo Local</label>
-                  <input type="text" value={matchFormData.home_team} onChange={e => setMatchFormData({...matchFormData, home_team: e.target.value})} />
+                  <input 
+                    type="text" 
+                    list="teams-datalist" 
+                    value={matchFormData.home_team} 
+                    onChange={e => setMatchFormData({...matchFormData, home_team: e.target.value})} 
+                    placeholder="Ej: Millonarios"
+                  />
                 </div>
                 <div className="form-group">
                   <label>Equipo Visitante</label>
-                  <input type="text" value={matchFormData.away_team} onChange={e => setMatchFormData({...matchFormData, away_team: e.target.value})} />
+                  <input 
+                    type="text" 
+                    list="teams-datalist" 
+                    value={matchFormData.away_team} 
+                    onChange={e => setMatchFormData({...matchFormData, away_team: e.target.value})} 
+                    placeholder="Ej: Atlético Nacional"
+                  />
                 </div>
+                <datalist id="teams-datalist">
+                  {teamsList.map((t: any) => (
+                    <option key={t.id} value={t.name} />
+                  ))}
+                </datalist>
                 <div className="form-group">
                   <label>Goles Local</label>
                   <input type="number" min="0" value={matchFormData.home_score} onChange={e => setMatchFormData({...matchFormData, home_score: parseInt(e.target.value)})} />

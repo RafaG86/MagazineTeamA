@@ -21,6 +21,10 @@ Route::post('/matches', [MatchController::class, 'store']);
 Route::put('/matches/{id}', [MatchController::class, 'update']);
 Route::delete('/matches/{id}', [MatchController::class, 'destroy']);
 
+Route::get('/teams', function () {
+    return response()->json(\App\Models\Team::orderBy('name')->get());
+});
+
 Route::get('/bot/standings', [SportBotController::class, 'getDimayorStandings']);
 Route::get('/bot/results', [SportBotController::class, 'getDimayorResults']);
 Route::get('/bot/ucl/standings', [SportBotController::class, 'getUclStandings']);
